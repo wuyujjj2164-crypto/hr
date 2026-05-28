@@ -6,6 +6,13 @@
   <title>业务部实习生成长导航智能看板</title>
   <link rel="stylesheet" href="css/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>
+    window.addEventListener('load', function() {
+      if (typeof Chart === 'undefined') {
+        document.body.insertAdjacentHTML('afterbegin', '<div style="background:#FFF3E0;color:#E65100;padding:12px 20px;text-align:center;font-size:14px;">⚠️ 图表库加载失败，部分数据可视化功能不可用。请检查网络连接后刷新页面。</div>');
+      }
+    });
+  </script>
 </head>
 <body>
   <!-- 角色选择页 -->

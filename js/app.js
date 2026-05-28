@@ -11,6 +11,11 @@ const App = {
     if (saved.role) {
       this.currentRole = saved.role;
       this.currentUserId = saved.userId;
+      // 恢复角色时非实习生需要验证密码
+      if (saved.role !== 'intern' && sessionStorage.getItem('tcamp_auth_' + saved.role) !== 'true') {
+        this.showRoleSelect();
+        return;
+      }
       this.showDashboard();
     } else {
       this.showRoleSelect();
@@ -25,6 +30,49 @@ const App = {
   },
 
   selectRole(role, userId) {
+    if (role !== 'intern') {
+      this.showPasswordModal(role, userId);
+      return;
+    }
+    this.doSelectRole(role, userId);
+  },
+
+  showPasswordModal(role, userId) {
+    if (sessionStorage.getItem('tcamp_auth_' + role) === 'true') {
+      this.doSelectRole(role, userId);
+      return;
+    }
+    const overlay = document.createElement('div');
+    overlay.id = 'password-modal';
+    overlay.className = 'password-modal';
+    overlay.innerHTML = `
+      <div class="password-box">
+        <h3>${role === 'mentor' ? '导师' : 'HR'}身份验证</h3>
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">请输入访问密码</p>
+        <input type="password" id="password-input" placeholder="密码" onkeydown="if(event.key==='Enter')App.checkPassword('${role}', ${userId})">
+        <div class="password-btns">
+          <button class="role-switch-btn" onclick="document.getElementById('password-modal').remove()">取消</button>
+          <button class="btn-primary" onclick="App.checkPassword('${role}', ${userId})">确认</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    setTimeout(() => document.getElementById('password-input').focus(), 50);
+  },
+
+  checkPassword(role, userId) {
+    const input = document.getElementById('password-input').value;
+    const passwords = { mentor: 'mentor2025', hr: 'hr2025' };
+    if (input === passwords[role]) {
+      sessionStorage.setItem('tcamp_auth_' + role, 'true');
+      document.getElementById('password-modal').remove();
+      this.doSelectRole(role, userId);
+    } else {
+      alert('密码错误，请重试');
+    }
+  },
+
+  doSelectRole(role, userId) {
     this.currentRole = role;
     this.currentUserId = userId;
     Storage.setRole(role, userId);
@@ -76,14 +124,71 @@ const App = {
     const header = document.getElementById('header');
     const user = this.getCurrentUser();
     const roleLabel = { intern: '实习生', mentor: '导师', hr: 'HR' }[this.currentRole];
+    const notifications = Storage.getNotifications(this.currentRole, this.currentUserId);
 
     header.innerHTML = `
       <div class="header-title">${roleLabel}工作台</div>
-      <div class="header-user">
-        <img src="${user?.avatar || ''}" class="user-avatar" alt="">
-        <span class="user-name">${user?.name || roleLabel}</span>
+      <div class="header-actions">
+        ${this.currentRole !== 'intern' ? `
+          <button class="header-btn" onclick="App.exportData()" title="导出数据">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+          <button class="header-btn" onclick="App.importData()" title="导入数据">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </button>
+        ` : ''}
+        <div class="header-notify" onclick="App.toggleNotifyPanel()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          ${notifications.length > 0 ? `<span class="notify-badge">${notifications.length}</span>` : ''}
+          <div class="notify-panel" id="notify-panel" style="display:none">
+            ${notifications.length === 0 ? '<div class="notify-empty">暂无通知</div>' : notifications.map(n => `<div class="notify-item ${n.type}">${n.text}</div>`).join('')}
+          </div>
+        </div>
+        <div class="header-user">
+          <img src="${user?.avatar || ''}" class="user-avatar" alt="">
+          <span class="user-name">${user?.name || roleLabel}</span>
+        </div>
       </div>
     `;
+  },
+
+  toggleNotifyPanel() {
+    const panel = document.getElementById('notify-panel');
+    if (panel) {
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    }
+  },
+
+  exportData() {
+    const data = Storage.exportData();
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tcamp-intern-dashboard-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  importData() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        if (Storage.importData(ev.target.result)) {
+          alert('数据导入成功，页面即将刷新');
+          location.reload();
+        } else {
+          alert('数据格式错误，导入失败');
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
   },
 
   getCurrentUser() {
@@ -152,6 +257,8 @@ const App = {
     this.currentRole = null;
     this.currentUserId = null;
     Storage.setRole(null, null);
+    sessionStorage.removeItem('tcamp_auth_mentor');
+    sessionStorage.removeItem('tcamp_auth_hr');
     this.showRoleSelect();
   },
 
@@ -280,6 +387,18 @@ const App = {
                   AI 成长反馈
                 </div>
                 <p>${log.aiFeedback}</p>
+              </div>
+            ` : ''}
+            ${(log.comments || []).length > 0 ? `
+              <div class="log-comments">
+                <div class="log-comments-title">导师点评</div>
+                ${log.comments.map(c => `
+                  <div class="log-comment">
+                    <span class="comment-author">${c.author}</span>
+                    <span class="comment-time">${c.time}</span>
+                    <p>${c.content}</p>
+                  </div>
+                `).join('')}
               </div>
             ` : ''}
           </div>
@@ -496,11 +615,41 @@ const App = {
                   <strong>AI反馈：</strong>${log.aiFeedback}
                 </div>
               ` : ''}
+              ${(log.comments || []).length > 0 ? `
+                <div class="log-comments">
+                  ${log.comments.map(c => `
+                    <div class="log-comment">
+                      <span class="comment-author">${c.author}</span>
+                      <span class="comment-time">${c.time}</span>
+                      <p>${c.content}</p>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : ''}
+              <div class="comment-input-row">
+                <input type="text" id="comment-${i.id}-${log.week}" placeholder="写下你的点评..." onkeydown="if(event.key==='Enter')App.addLogComment(${i.id},${log.week})">
+                <button class="btn-primary" onclick="App.addLogComment(${i.id},${log.week})">回复</button>
+              </div>
             </div>
           `).join('') : '<div class="empty-state">暂无日志</div>'}
         </div>
       `).join('')}
     `;
+  },
+
+  addLogComment(internId, week) {
+    const input = document.getElementById(`comment-${internId}-${week}`);
+    const content = input.value.trim();
+    if (!content) return;
+    const mentor = Storage.getMentor(this.currentUserId);
+    Storage.addLogComment(internId, week, {
+      author: mentor ? mentor.name : '导师',
+      role: 'mentor',
+      content: content,
+      time: new Date().toLocaleString('zh-CN')
+    });
+    input.value = '';
+    this.renderViewLogs(document.getElementById('main-content'));
   },
 
   renderEvaluate(container) {
@@ -561,6 +710,7 @@ const App = {
       document.getElementById('val-teamwork').textContent = intern.scores.teamwork;
       document.getElementById('score-output').value = intern.scores.output;
       document.getElementById('val-output').textContent = intern.scores.output;
+      document.getElementById('eval-comment').value = intern.scores.comment || '';
     }
   },
 
@@ -568,15 +718,25 @@ const App = {
     const internId = parseInt(document.getElementById('eval-intern').value);
     const intern = Storage.getIntern(internId);
     if (intern) {
-      intern.scores = {
+      const newScores = {
         learning: parseInt(document.getElementById('score-learning').value),
         business: parseInt(document.getElementById('score-business').value),
         teamwork: parseInt(document.getElementById('score-teamwork').value),
-        output: parseInt(document.getElementById('score-output').value)
+        output: parseInt(document.getElementById('score-output').value),
+        comment: document.getElementById('eval-comment').value.trim()
       };
+      intern.scores = newScores;
       // 根据平均分更新状态
-      const avg = (intern.scores.learning + intern.scores.business + intern.scores.teamwork + intern.scores.output) / 4;
+      const avg = (newScores.learning + newScores.business + newScores.teamwork + newScores.output) / 4;
       intern.status = avg >= 80 ? 'adapted' : avg >= 60 ? 'attention' : 'risk';
+      // 更新 scoreHistory 最新一周
+      if (intern.scoreHistory && intern.scoreHistory.length > 0) {
+        const latest = intern.scoreHistory[intern.scoreHistory.length - 1];
+        latest.learning = newScores.learning;
+        latest.business = newScores.business;
+        latest.teamwork = newScores.teamwork;
+        latest.output = newScores.output;
+      }
       Storage.updateIntern(intern);
       alert('评价提交成功！');
     }
@@ -634,6 +794,26 @@ const App = {
           </div>
           <div class="chart-container"><canvas id="chart-radar"></canvas></div>
         </div>
+        <div class="chart-card">
+          <h3>评分变化趋势</h3>
+          <div class="intern-select-row">
+            <select id="trend-intern" onchange="App.updateTrend()">
+              ${interns.map(i => `<option value="${i.id}">${i.name}（${i.position}）</option>`).join('')}
+            </select>
+          </div>
+          <div class="chart-container"><canvas id="chart-trend"></canvas></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px">
+        <div class="page-header">
+          <h3>批量数据管理</h3>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <button class="btn-primary" onclick="App.exportData()">导出全部数据</button>
+          <button class="btn-primary" onclick="App.importData()">导入数据恢复</button>
+          <button class="btn-primary" onclick="App.showBulkImport()">批量导入实习生</button>
+        </div>
       </div>
     `;
 
@@ -643,6 +823,7 @@ const App = {
       const mentorCtx = document.getElementById('chart-mentor');
       const statusCtx = document.getElementById('chart-status');
       const radarCtx = document.getElementById('chart-radar');
+      const trendCtx = document.getElementById('chart-trend');
 
       if (posCtx) Charts.positionPie(posCtx);
       if (mentorCtx) Charts.mentorLoadBar(mentorCtx);
@@ -650,6 +831,9 @@ const App = {
       if (radarCtx) {
         const firstIntern = interns[0];
         Charts.capabilityRadar(radarCtx, firstIntern.scores);
+      }
+      if (trendCtx) {
+        Charts.scoreTrendLine(trendCtx, interns[0].id);
       }
     }, 100);
   },
@@ -663,28 +847,119 @@ const App = {
     }
   },
 
+  updateTrend() {
+    const internId = parseInt(document.getElementById('trend-intern').value);
+    const ctx = document.getElementById('chart-trend');
+    if (ctx) {
+      Charts.scoreTrendLine(ctx, internId);
+    }
+  },
+
+  showBulkImport() {
+    const container = document.getElementById('main-content');
+    container.innerHTML = `
+      <div class="page-header">
+        <h2>批量导入实习生</h2>
+        <button class="role-switch-btn" onclick="App.switchTab('dashboard')">返回大盘</button>
+      </div>
+      <div class="form-card" style="max-width:800px">
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
+          粘贴实习生 JSON 数组进行批量导入。格式示例：<br>
+          [{"name":"张三","position":"研发","mentorId":1,"currentWeek":3}]
+        </p>
+        <div class="form-group">
+          <label>实习生数据（JSON 数组）</label>
+          <textarea id="bulk-import-data" rows="10" placeholder='[{"name":"张三","position":"研发","mentorId":1}]'></textarea>
+        </div>
+        <button class="btn-primary" onclick="App.processBulkImport()">确认导入</button>
+      </div>
+    `;
+  },
+
+  processBulkImport() {
+    const raw = document.getElementById('bulk-import-data').value.trim();
+    if (!raw) { alert('请输入数据'); return; }
+    try {
+      const list = JSON.parse(raw);
+      if (!Array.isArray(list)) { alert('数据必须是数组格式'); return; }
+      const data = Storage.getAll();
+      let added = 0;
+      list.forEach(item => {
+        if (item.name && item.position) {
+          const maxId = Math.max(...data.interns.map(i => i.id), 0);
+          const intern = {
+            id: maxId + 1,
+            name: item.name,
+            avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${maxId + 1}&backgroundColor=b6e3f4`,
+            position: item.position,
+            mentorId: item.mentorId || MENTORS.find(m => m.department === item.position)?.id || 1,
+            joinDate: '2025-05-01',
+            currentWeek: item.currentWeek || 1,
+            status: 'adapted',
+            scores: { learning: 70, business: 70, teamwork: 70, output: 70, comment: '' },
+            scoreHistory: generateScoreHistory(item.currentWeek || 1),
+            tasks: generateTasks(maxId + 1, item.position, item.currentWeek || 1),
+            logs: [],
+            aiChats: []
+          };
+          data.interns.push(intern);
+          added++;
+        }
+      });
+      Storage.saveAll(data);
+      alert(`成功导入 ${added} 名实习生！`);
+      this.switchTab('dashboard');
+    } catch (e) {
+      alert('JSON 格式错误：' + e.message);
+    }
+  },
+
   renderRisk(container) {
     const interns = Storage.getInterns();
-    const risks = interns.filter(i => i.status === 'risk' || i.status === 'attention');
+    // 多因子风险模型
+    const riskList = interns.map(i => {
+      const factors = [];
+      const avg = (i.scores.learning + i.scores.business + i.scores.teamwork + i.scores.output) / 4;
+      const taskRate = i.tasks.length > 0 ? i.tasks.filter(t => t.completed).length / i.tasks.length : 0;
+      const logDelay = Math.max(0, (i.currentWeek - 1) - i.logs.length);
+
+      if (avg < 65) factors.push({ level: 'high', text: `综合评分仅${Math.round(avg)}分` });
+      else if (avg < 75) factors.push({ level: 'medium', text: `综合评分${Math.round(avg)}分，有待提升` });
+
+      if (logDelay >= 2) factors.push({ level: 'high', text: `日志拖欠${logDelay}周` });
+      else if (logDelay >= 1) factors.push({ level: 'medium', text: `日志拖欠${logDelay}周` });
+      else if (i.logs.length === 0 && i.currentWeek > 1) factors.push({ level: 'high', text: '从未提交日志' });
+
+      if (taskRate < 0.4) factors.push({ level: 'high', text: `任务完成率仅${Math.round(taskRate * 100)}%` });
+      else if (taskRate < 0.7) factors.push({ level: 'medium', text: `任务完成率${Math.round(taskRate * 100)}%` });
+
+      if (!i.scores.comment || i.scores.comment.length < 10) factors.push({ level: 'low', text: '缺少导师过程评语' });
+
+      // 计算风险总分
+      const score = factors.reduce((sum, f) => sum + (f.level === 'high' ? 3 : f.level === 'medium' ? 2 : 1), 0);
+
+      return { intern: i, factors, score };
+    }).filter(r => r.score > 0).sort((a, b) => b.score - a.score);
 
     container.innerHTML = `
       <div class="page-header">
         <h2>风险预警</h2>
-        <span>共 ${risks.length} 人需要关注</span>
+        <span>共 ${riskList.length} 人需要关注</span>
       </div>
       <div class="risk-list">
-        ${risks.map(i => {
+        ${riskList.map(({ intern: i, factors, score }) => {
           const mentor = Storage.getMentor(i.mentorId);
           const avg = Math.round((i.scores.learning + i.scores.business + i.scores.teamwork + i.scores.output) / 4);
+          const riskLevel = score >= 6 ? 'risk' : score >= 3 ? 'attention' : 'adapted';
           return `
-            <div class="risk-card ${i.status}">
+            <div class="risk-card ${riskLevel}">
               <div class="risk-header">
                 <img src="${i.avatar}" class="intern-avatar-sm" alt="">
                 <div class="risk-info">
                   <div class="risk-name">${i.name}</div>
                   <div class="risk-meta">${i.position} · 第${i.currentWeek}周 · 导师：${mentor?.name || '未知'}</div>
                 </div>
-                <span class="badge badge-${i.status}">${this.getStatusLabel(i.status)}</span>
+                <span class="badge badge-${riskLevel}">${this.getStatusLabel(riskLevel)}</span>
               </div>
               <div class="risk-scores">
                 <div class="risk-score"><span>学习能力</span><strong>${i.scores.learning}</strong></div>
@@ -693,15 +968,15 @@ const App = {
                 <div class="risk-score"><span>产出质量</span><strong>${i.scores.output}</strong></div>
                 <div class="risk-score total"><span>综合</span><strong>${avg}</strong></div>
               </div>
-              <div class="risk-reason">
-                ${i.logs.length === 0 ? '⚠️ 尚未提交任何成长日志' : ''}
-                ${i.scores.learning < 65 ? '⚠️ 学习能力评分偏低' : ''}
-                ${i.scores.output < 65 ? '⚠️ 产出质量评分偏低' : ''}
+              <div class="risk-factors">
+                ${factors.map(f => `
+                  <span class="risk-factor ${f.level}">${f.text}</span>
+                `).join('')}
               </div>
             </div>
           `;
         }).join('')}
-        ${risks.length === 0 ? '<div class="empty-state">🎉 目前没有需要关注的实习生！</div>' : ''}
+        ${riskList.length === 0 ? '<div class="empty-state">🎉 目前没有需要关注的实习生！</div>' : ''}
       </div>
     `;
   },

@@ -1152,6 +1152,250 @@ body {
   font-size: 14px;
 }
 
+/* ===== 密码弹窗 ===== */
+.password-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.password-box {
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 32px;
+  width: 360px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+.password-box h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.password-box input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  margin: 16px 0;
+}
+
+.password-btns {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+/* ===== Header 操作区 ===== */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.header-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.header-notify {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+
+.header-notify:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.notify-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background: var(--danger);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notify-panel {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  width: 280px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  padding: 12px;
+  z-index: 200;
+}
+
+.notify-item {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+.notify-item:last-child {
+  margin-bottom: 0;
+}
+
+.notify-item.warning {
+  background: #FFF3E0;
+  color: #E65100;
+}
+
+.notify-item.danger {
+  background: #FFEBEE;
+  color: #C62828;
+}
+
+.notify-item.info {
+  background: #E3F2FD;
+  color: #1565C0;
+}
+
+.notify-item.success {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+
+.notify-empty {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ===== 日志评论 ===== */
+.log-comments {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.log-comments-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary);
+  margin-bottom: 8px;
+}
+
+.log-comment {
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.log-comment .comment-author {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-right: 8px;
+}
+
+.log-comment .comment-time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.log-comment p {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.comment-input-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.comment-input-row input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.comment-input-row .btn-primary {
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+/* ===== 风险因子标签 ===== */
+.risk-factors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.risk-factor {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.risk-factor.high {
+  background: #FFEBEE;
+  color: #C62828;
+}
+
+.risk-factor.medium {
+  background: #FFF3E0;
+  color: #E65100;
+}
+
+.risk-factor.low {
+  background: #E3F2FD;
+  color: #1565C0;
+}
+
 /* ===== 加载 ===== */
 .loading {
   text-align: center;

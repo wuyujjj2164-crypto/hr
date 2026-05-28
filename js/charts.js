@@ -144,6 +144,39 @@ const Charts = {
     });
   },
 
+  // 评分趋势折线图
+  scoreTrendLine(ctx, internId) {
+    const intern = Storage.getIntern(internId);
+    if (!intern || !intern.scoreHistory || intern.scoreHistory.length === 0) return;
+
+    const labels = intern.scoreHistory.map(h => `第${h.week}周`);
+
+    if (this.instances.trend) {
+      this.instances.trend.destroy();
+    }
+
+    this.instances.trend = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: '学习能力', data: intern.scoreHistory.map(h => h.learning), borderColor: '#0052D9', backgroundColor: 'rgba(0, 82, 217, 0.1)', tension: 0.3, fill: true },
+          { label: '业务理解', data: intern.scoreHistory.map(h => h.business), borderColor: '#00C853', backgroundColor: 'rgba(0, 200, 83, 0.1)', tension: 0.3, fill: true },
+          { label: '团队协作', data: intern.scoreHistory.map(h => h.teamwork), borderColor: '#FF9100', backgroundColor: 'rgba(255, 145, 0, 0.1)', tension: 0.3, fill: true },
+          { label: '产出质量', data: intern.scoreHistory.map(h => h.output), borderColor: '#F5222D', backgroundColor: 'rgba(245, 34, 45, 0.1)', tension: 0.3, fill: true }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: { beginAtZero: true, max: 100, ticks: { stepSize: 20 } }
+        },
+        plugins: { legend: { position: 'bottom' } }
+      }
+    });
+  },
+
   destroyAll() {
     Object.values(this.instances).forEach(chart => chart.destroy());
     this.instances = {};

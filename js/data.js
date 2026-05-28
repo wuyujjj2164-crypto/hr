@@ -89,8 +89,10 @@ function generateInterns() {
         learning: Math.floor(Math.random() * 30) + 60,
         business: Math.floor(Math.random() * 30) + 60,
         teamwork: Math.floor(Math.random() * 30) + 60,
-        output: Math.floor(Math.random() * 30) + 60
+        output: Math.floor(Math.random() * 30) + 60,
+        comment: ''
       },
+      scoreHistory: generateScoreHistory(currentWeek),
       tasks: generateTasks(i + 1, position, currentWeek),
       logs: generateLogs(i + 1, currentWeek),
       aiChats: []
@@ -152,7 +154,8 @@ function generateLogs(internId, currentWeek) {
       difficulties: difficulties[w % difficulties.length],
       nextWeekPlan: plans[w % plans.length],
       aiFeedback: generateAIFeedback(w, summaries[w % summaries.length], difficulties[w % difficulties.length]),
-      submittedAt: getWeekDeadline(w)
+      submittedAt: getWeekDeadline(w),
+      comments: []
     });
   }
   return logs;
@@ -165,6 +168,28 @@ function generateAIFeedback(week, summary, difficulty) {
     `第${week}周的表现值得肯定！你在${summary.substring(0, 20)}...方面做得很好。面对${difficulty}，建议采用"小步快跑"的策略，先完成再完美。`
   ];
   return feedbacks[week % feedbacks.length];
+}
+
+function generateScoreHistory(currentWeek) {
+  const history = [];
+  const baseScores = {
+    learning: Math.floor(Math.random() * 20) + 55,
+    business: Math.floor(Math.random() * 20) + 55,
+    teamwork: Math.floor(Math.random() * 20) + 55,
+    output: Math.floor(Math.random() * 20) + 55
+  };
+  for (let w = 1; w <= currentWeek; w++) {
+    // 模拟分数随时间逐步提升的趋势
+    const progress = w / currentWeek;
+    history.push({
+      week: w,
+      learning: Math.min(100, Math.round(baseScores.learning + progress * 15 + Math.random() * 10)),
+      business: Math.min(100, Math.round(baseScores.business + progress * 15 + Math.random() * 10)),
+      teamwork: Math.min(100, Math.round(baseScores.teamwork + progress * 15 + Math.random() * 10)),
+      output: Math.min(100, Math.round(baseScores.output + progress * 15 + Math.random() * 10))
+    });
+  }
+  return history;
 }
 
 function getWeekDeadline(week) {
