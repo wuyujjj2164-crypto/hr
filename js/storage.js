@@ -1,39 +1,84 @@
-// localStorage 封装层
+// Storage 封装层 - 支持 CloudBase 云函数 + localStorage 降级
 
 const STORAGE_KEY = 'tcamp_intern_dashboard_v1';
 
 const Storage = {
-  init() {
-    if (!localStorage.getItem(STORAGE_KEY)) {
-      const initialData = {
-        interns: generateInterns(),
-        mentors: MENTORS,
-        currentRole: null,
-        currentUserId: null,
-        initialized: true
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(initialData));
+  // 内存缓存
+  _cache: null,
+  _useCloud: false,
+  _initialized: false,
+
+  // 初始化：优先尝试云端，失败则回退 localStorage
+  async init() {
+    if (this._initialized) return;
+
+    try {
+      // 尝试云端初始化
+      const initResult = await API.initData();
+      if (initResult) {
+        this._useCloud = true;
+        console.log('Cloud mode enabled');
+      }
+    } catch (e) {
+      console.log('Cloud init failed, falling back to localStorage');
+    }
+
+    // 如果云端不可用，使用 localStorage
+    if (!this._useCloud) {
+      if (!localStorage.getItem(STORAGE_KEY)) {
+        const initialData = {
+          interns: generateInterns(),
+          mentors: MENTORS,
+          currentRole: null,
+          currentUserId: null,
+          initialized: true
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(initialData));
+      }
+    }
+
+    this._initialized = true;
+  },
+
+  // 判断当前使用哪种存储
+  isCloud() {
+    return this._useCloud;
+  },
+
+  // 获取完整数据（用于内存缓存同步）
+  async _getAllData() {
+    if (this._useCloud) {
+      const interns = await API.getInterns() || [];
+      const mentors = await API.getMentors() || [];
+      const config = await API.getConfig() || { currentRole: null, currentUserId: null };
+      return { interns, mentors, ...config };
+    } else {
+      const data = localStorage.getItem(STORAGE_KEY);
+      return data ? JSON.parse(data) : { interns: [], mentors: [], currentRole: null, currentUserId: null };
     }
   },
 
-  getAll() {
-    const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : null;
-  },
-
-  saveAll(data) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  },
-
-  getInterns() {
+  // 获取所有实习生
+  async getInterns() {
+    if (this._useCloud) {
+      return await API.getInterns() || [];
+    }
     return this.getAll()?.interns || [];
   },
 
-  getIntern(id) {
+  // 获取单个实习生
+  async getIntern(id) {
+    if (this._useCloud) {
+      return await API.getIntern(id);
+    }
     return this.getInterns().find(i => i.id === id);
   },
 
-  updateIntern(intern) {
+  // 更新实习生（云端模式直接更新字段，本地模式全量替换）
+  async updateIntern(intern) {
+    if (this._useCloud) {
+      return await API.updateIntern(intern.id, intern);
+    }
     const data = this.getAll();
     const idx = data.interns.findIndex(i => i.id === intern.id);
     if (idx >= 0) {
@@ -42,27 +87,48 @@ const Storage = {
     }
   },
 
-  getMentors() {
+  // 获取所有导师
+  async getMentors() {
+    if (this._useCloud) {
+      return await API.getMentors() || [];
+    }
     return this.getAll()?.mentors || [];
   },
 
-  getMentor(id) {
+  // 获取单个导师
+  async getMentor(id) {
+    if (this._useCloud) {
+      return await API.getMentor(id);
+    }
     return this.getMentors().find(m => m.id === id);
   },
 
-  setRole(role, userId) {
+  // 设置角色
+  async setRole(role, userId) {
+    if (this._useCloud) {
+      return await API.setConfig({ currentRole: role, currentUserId: userId });
+    }
     const data = this.getAll();
     data.currentRole = role;
     data.currentUserId = userId;
     this.saveAll(data);
   },
 
-  getRole() {
+  // 获取角色
+  async getRole() {
+    if (this._useCloud) {
+      const config = await API.getConfig();
+      return { role: config?.currentRole, userId: config?.currentUserId };
+    }
     const data = this.getAll();
     return { role: data?.currentRole, userId: data?.currentUserId };
   },
 
-  addLog(internId, log) {
+  // 添加日志
+  async addLog(internId, log) {
+    if (this._useCloud) {
+      return await API.addLog(internId, log);
+    }
     const intern = this.getIntern(internId);
     if (intern) {
       intern.logs.push(log);
@@ -70,7 +136,11 @@ const Storage = {
     }
   },
 
-  updateTask(internId, taskId, completed) {
+  // 更新任务
+  async updateTask(internId, taskId, completed) {
+    if (this._useCloud) {
+      return await API.updateTask(internId, taskId, completed);
+    }
     const intern = this.getIntern(internId);
     if (intern) {
       const task = intern.tasks.find(t => t.id === taskId);
@@ -81,7 +151,16 @@ const Storage = {
     }
   },
 
-  addChat(role, message, isUser) {
+  // 添加聊天记录
+  async addChat(role, message, isUser) {
+    if (this._useCloud) {
+      // 云端暂不支持聊天记录，存本地
+      const key = `tcamp_chat_${role}`;
+      const chats = JSON.parse(localStorage.getItem(key) || '[]');
+      chats.push({ message, isUser, time: new Date().toISOString() });
+      localStorage.setItem(key, JSON.stringify(chats));
+      return;
+    }
     const data = this.getAll();
     if (!data.chats) data.chats = {};
     if (!data.chats[role]) data.chats[role] = [];
@@ -89,11 +168,20 @@ const Storage = {
     this.saveAll(data);
   },
 
-  getChats(role) {
+  // 获取聊天记录
+  async getChats(role) {
+    if (this._useCloud) {
+      const key = `tcamp_chat_${role}`;
+      return JSON.parse(localStorage.getItem(key) || '[]');
+    }
     return this.getAll()?.chats?.[role] || [];
   },
 
-  addLogComment(internId, week, comment) {
+  // 添加日志评论
+  async addLogComment(internId, week, comment) {
+    if (this._useCloud) {
+      return await API.addLogComment(internId, week, comment);
+    }
     const intern = this.getIntern(internId);
     if (intern) {
       const log = intern.logs.find(l => l.week === week);
@@ -105,11 +193,17 @@ const Storage = {
     }
   },
 
+  // ===== 以下方法纯前端计算，不依赖存储后端 =====
+
   // 通知相关
   getNotifications(role, userId) {
-    const interns = this.getInterns();
+    // 通知计算需要同步获取数据，这里简化处理
+    // 实际使用时会先确保数据已加载
     const notifications = [];
     const today = new Date().toISOString().split('T')[0];
+
+    // 获取实习生数据（从缓存或同步读取）
+    const interns = this._getSyncInterns();
 
     if (role === 'intern') {
       const intern = interns.find(i => i.id === userId);
@@ -122,7 +216,6 @@ const Storage = {
         if (!hasCurrentLog && intern.currentWeek > 1) {
           notifications.push({ type: 'info', text: `别忘了写第${intern.currentWeek - 1}周的日志哦` });
         }
-        // 新评论提醒
         const newComments = intern.logs.reduce((sum, l) => sum + (l.comments || []).filter(c => c.role === 'mentor').length, 0);
         if (newComments > 0) {
           notifications.push({ type: 'success', text: `导师给你的日志留了 ${newComments} 条评论，快去看看` });
@@ -131,7 +224,8 @@ const Storage = {
     }
 
     if (role === 'mentor') {
-      const mentor = this.getMentor(userId);
+      const mentors = this._getSyncMentors();
+      const mentor = mentors.find(m => m.id === userId);
       if (mentor) {
         const mentees = interns.filter(i => i.mentorId === mentor.id);
         const silentMentees = mentees.filter(i => i.logs.length === 0 && i.currentWeek > 1);
@@ -161,13 +255,41 @@ const Storage = {
     return notifications;
   },
 
-  // 导出所有数据为 JSON 字符串
+  // 同步获取实习生（用于通知计算）
+  _getSyncInterns() {
+    if (!this._useCloud) {
+      return this.getAll()?.interns || [];
+    }
+    // 云端模式下，通知计算依赖 App 已加载的数据
+    return window._appData?.interns || [];
+  },
+
+  // 同步获取导师
+  _getSyncMentors() {
+    if (!this._useCloud) {
+      return this.getAll()?.mentors || [];
+    }
+    return window._appData?.mentors || [];
+  },
+
+  // ===== localStorage 兼容方法 =====
+
+  getAll() {
+    const data = localStorage.getItem(STORAGE_KEY);
+    return data ? JSON.parse(data) : null;
+  },
+
+  saveAll(data) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  },
+
+  // 导出所有数据
   exportData() {
     const data = this.getAll();
     return JSON.stringify(data, null, 2);
   },
 
-  // 导入数据（覆盖当前）
+  // 导入数据
   importData(jsonStr) {
     try {
       const data = JSON.parse(jsonStr);

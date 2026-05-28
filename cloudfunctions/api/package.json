@@ -1,0 +1,9 @@
+{
+  "name": "tcamp-api",
+  "version": "1.0.0",
+  "description": "Tcamp intern dashboard backend API",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}

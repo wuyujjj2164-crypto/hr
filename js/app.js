@@ -4,10 +4,12 @@ const App = {
   currentView: 'select',
   currentRole: null,
   currentUserId: null,
+  _data: { interns: [], mentors: [] },
 
-  init() {
-    Storage.init();
-    const saved = Storage.getRole();
+  async init() {
+    await Storage.init();
+    await this.loadData();
+    const saved = await Storage.getRole();
     if (saved.role) {
       this.currentRole = saved.role;
       this.currentUserId = saved.userId;
@@ -21,6 +23,19 @@ const App = {
       this.showRoleSelect();
     }
   },
+
+  // 从后端/本地加载所有数据到内存缓存
+  async loadData() {
+    this._data.interns = await this.getInterns() || [];
+    this._data.mentors = await this.getMentors() || [];
+    window._appData = this._data;
+  },
+
+  // 内存同步读取方法
+  getInterns() { return this._data.interns; },
+  getIntern(id) { return this._data.interns.find(i => i.id === id); },
+  getMentors() { return this._data.mentors; },
+  getMentor(id) { return this._data.mentors.find(m => m.id === id); },
 
   // ===== 角色选择 =====
   showRoleSelect() {
@@ -72,10 +87,10 @@ const App = {
     }
   },
 
-  doSelectRole(role, userId) {
+  async doSelectRole(role, userId) {
     this.currentRole = role;
     this.currentUserId = userId;
-    Storage.setRole(role, userId);
+    await Storage.setRole(role, userId);
     this.showDashboard();
   },
 
@@ -193,10 +208,10 @@ const App = {
 
   getCurrentUser() {
     if (this.currentRole === 'intern') {
-      return Storage.getIntern(this.currentUserId);
+      return this.getIntern(this.currentUserId);
     }
     if (this.currentRole === 'mentor') {
-      return Storage.getMentor(this.currentUserId);
+      return this.getMentor(this.currentUserId);
     }
     return { name: 'HR管理员', avatar: '' };
   },
@@ -253,10 +268,10 @@ const App = {
     }, 100);
   },
 
-  logout() {
+  async logout() {
     this.currentRole = null;
     this.currentUserId = null;
-    Storage.setRole(null, null);
+    await Storage.setRole(null, null);
     sessionStorage.removeItem('tcamp_auth_mentor');
     sessionStorage.removeItem('tcamp_auth_hr');
     this.showRoleSelect();
@@ -264,7 +279,7 @@ const App = {
 
   // ===== 实习生视图 =====
   renderRoadmap(container) {
-    const intern = Storage.getIntern(this.currentUserId);
+    const intern = this.getIntern(this.currentUserId);
     const template = TEMPLATES[intern.position];
 
     container.innerHTML = `
@@ -294,7 +309,7 @@ const App = {
   },
 
   renderTasks(container) {
-    const intern = Storage.getIntern(this.currentUserId);
+    const intern = this.getIntern(this.currentUserId);
     const currentTasks = intern.tasks.filter(t => t.week === intern.currentWeek);
     const completed = currentTasks.filter(t => t.completed).length;
     const progress = currentTasks.length > 0 ? Math.round((completed / currentTasks.length) * 100) : 0;
@@ -322,17 +337,18 @@ const App = {
     `;
   },
 
-  toggleTask(taskId) {
-    const intern = Storage.getIntern(this.currentUserId);
+  async toggleTask(taskId) {
+    const intern = this.getIntern(this.currentUserId);
     const task = intern.tasks.find(t => t.id === taskId);
     if (task) {
-      Storage.updateTask(this.currentUserId, taskId, !task.completed);
+      await Storage.updateTask(this.currentUserId, taskId, !task.completed);
+      await this.loadData();
       this.renderTasks(document.getElementById('main-content'));
     }
   },
 
   renderLogs(container) {
-    const intern = Storage.getIntern(this.currentUserId);
+    const intern = this.getIntern(this.currentUserId);
     const hasCurrentLog = intern.logs.some(l => l.week === intern.currentWeek - 1);
 
     container.innerHTML = `
@@ -408,7 +424,7 @@ const App = {
     `;
   },
 
-  submitLog() {
+  async submitLog() {
     const summary = document.getElementById('log-summary').value.trim();
     const difficulties = document.getElementById('log-difficulties').value.trim();
     const plan = document.getElementById('log-plan').value.trim();
@@ -418,7 +434,7 @@ const App = {
       return;
     }
 
-    const intern = Storage.getIntern(this.currentUserId);
+    const intern = this.getIntern(this.currentUserId);
     const week = intern.currentWeek - 1;
 
     // 生成AI反馈
@@ -433,7 +449,8 @@ const App = {
       submittedAt: new Date().toISOString().split('T')[0]
     };
 
-    Storage.addLog(this.currentUserId, log);
+    await Storage.addLog(this.currentUserId, log);
+    await this.loadData();
     this.renderLogs(document.getElementById('main-content'));
   },
 
@@ -451,7 +468,7 @@ const App = {
   },
 
   renderResources(container) {
-    const intern = Storage.getIntern(this.currentUserId);
+    const intern = this.getIntern(this.currentUserId);
     const resources = RESOURCES[intern.position] || [];
 
     container.innerHTML = `
@@ -473,8 +490,8 @@ const App = {
 
   // ===== 导师视图 =====
   renderMyInterns(container) {
-    const mentor = Storage.getMentor(this.currentUserId);
-    const interns = Storage.getInterns().filter(i => i.mentorId === mentor.id);
+    const mentor = this.getMentor(this.currentUserId);
+    const interns = this.getInterns().filter(i => i.mentorId === mentor.id);
 
     container.innerHTML = `
       <div class="page-header">
@@ -504,7 +521,7 @@ const App = {
   },
 
   renderTeachPlan(container) {
-    const mentor = Storage.getMentor(this.currentUserId);
+    const mentor = this.getMentor(this.currentUserId);
     const template = TEMPLATES[mentor.department];
 
     container.innerHTML = `
@@ -529,8 +546,8 @@ const App = {
   },
 
   renderAssignTask(container) {
-    const mentor = Storage.getMentor(this.currentUserId);
-    const interns = Storage.getInterns().filter(i => i.mentorId === mentor.id);
+    const mentor = this.getMentor(this.currentUserId);
+    const interns = this.getInterns().filter(i => i.mentorId === mentor.id);
 
     container.innerHTML = `
       <div class="page-header">
@@ -562,7 +579,7 @@ const App = {
     `;
   },
 
-  createTask() {
+  async createTask() {
     const internId = parseInt(document.getElementById('task-intern').value);
     const week = parseInt(document.getElementById('task-week').value);
     const title = document.getElementById('task-title').value.trim();
@@ -570,7 +587,7 @@ const App = {
 
     if (!title) { alert('请填写任务标题'); return; }
 
-    const intern = Storage.getIntern(internId);
+    const intern = this.getIntern(internId);
     const maxId = Math.max(...intern.tasks.map(t => t.id), 0);
     intern.tasks.push({
       id: maxId + 1,
@@ -581,15 +598,16 @@ const App = {
       completed: false,
       deadline: getWeekDeadline(week)
     });
-    Storage.updateIntern(intern);
+    await Storage.updateIntern(intern);
+    await this.loadData();
     alert('任务分配成功！');
     document.getElementById('task-title').value = '';
     document.getElementById('task-desc').value = '';
   },
 
   renderViewLogs(container) {
-    const mentor = Storage.getMentor(this.currentUserId);
-    const interns = Storage.getInterns().filter(i => i.mentorId === mentor.id);
+    const mentor = this.getMentor(this.currentUserId);
+    const interns = this.getInterns().filter(i => i.mentorId === mentor.id);
 
     container.innerHTML = `
       <div class="page-header">
@@ -637,24 +655,25 @@ const App = {
     `;
   },
 
-  addLogComment(internId, week) {
+  async addLogComment(internId, week) {
     const input = document.getElementById(`comment-${internId}-${week}`);
     const content = input.value.trim();
     if (!content) return;
-    const mentor = Storage.getMentor(this.currentUserId);
-    Storage.addLogComment(internId, week, {
+    const mentor = this.getMentor(this.currentUserId);
+    await Storage.addLogComment(internId, week, {
       author: mentor ? mentor.name : '导师',
       role: 'mentor',
       content: content,
       time: new Date().toLocaleString('zh-CN')
     });
+    await this.loadData();
     input.value = '';
     this.renderViewLogs(document.getElementById('main-content'));
   },
 
   renderEvaluate(container) {
-    const mentor = Storage.getMentor(this.currentUserId);
-    const interns = Storage.getInterns().filter(i => i.mentorId === mentor.id);
+    const mentor = this.getMentor(this.currentUserId);
+    const interns = this.getInterns().filter(i => i.mentorId === mentor.id);
 
     container.innerHTML = `
       <div class="page-header">
@@ -700,7 +719,7 @@ const App = {
 
   loadEvalScores() {
     const internId = parseInt(document.getElementById('eval-intern').value);
-    const intern = Storage.getIntern(internId);
+    const intern = this.getIntern(internId);
     if (intern) {
       document.getElementById('score-learning').value = intern.scores.learning;
       document.getElementById('val-learning').textContent = intern.scores.learning;
@@ -714,9 +733,9 @@ const App = {
     }
   },
 
-  submitEval() {
+  async submitEval() {
     const internId = parseInt(document.getElementById('eval-intern').value);
-    const intern = Storage.getIntern(internId);
+    const intern = this.getIntern(internId);
     if (intern) {
       const newScores = {
         learning: parseInt(document.getElementById('score-learning').value),
@@ -737,14 +756,15 @@ const App = {
         latest.teamwork = newScores.teamwork;
         latest.output = newScores.output;
       }
-      Storage.updateIntern(intern);
+      await Storage.updateIntern(intern);
+      await this.loadData();
       alert('评价提交成功！');
     }
   },
 
   // ===== HR视图 =====
   renderHRDashboard(container) {
-    const interns = Storage.getInterns();
+    const interns = this.getInterns();
     const adapted = interns.filter(i => i.status === 'adapted').length;
     const attention = interns.filter(i => i.status === 'attention').length;
     const risk = interns.filter(i => i.status === 'risk').length;
@@ -840,7 +860,7 @@ const App = {
 
   updateRadar() {
     const internId = parseInt(document.getElementById('radar-intern').value);
-    const intern = Storage.getIntern(internId);
+    const intern = this.getIntern(internId);
     const ctx = document.getElementById('chart-radar');
     if (ctx && intern) {
       Charts.capabilityRadar(ctx, intern.scores);
@@ -915,7 +935,7 @@ const App = {
   },
 
   renderRisk(container) {
-    const interns = Storage.getInterns();
+    const interns = this.getInterns();
     // 多因子风险模型
     const riskList = interns.map(i => {
       const factors = [];
@@ -948,7 +968,7 @@ const App = {
       </div>
       <div class="risk-list">
         ${riskList.map(({ intern: i, factors, score }) => {
-          const mentor = Storage.getMentor(i.mentorId);
+          const mentor = this.getMentor(i.mentorId);
           const avg = Math.round((i.scores.learning + i.scores.business + i.scores.teamwork + i.scores.output) / 4);
           const riskLevel = score >= 6 ? 'risk' : score >= 3 ? 'attention' : 'adapted';
           return `
@@ -982,7 +1002,7 @@ const App = {
   },
 
   renderLogStats(container) {
-    const interns = Storage.getInterns();
+    const interns = this.getInterns();
     const totalPossible = interns.reduce((sum, i) => sum + (i.currentWeek - 1), 0);
     const totalSubmitted = interns.reduce((sum, i) => sum + i.logs.length, 0);
     const rate = totalPossible > 0 ? Math.round((totalSubmitted / totalPossible) * 100) : 0;
@@ -1020,7 +1040,7 @@ const App = {
         <div class="risk-list">
           <h3>未提交日志的实习生</h3>
           ${silent.map(i => {
-            const mentor = Storage.getMentor(i.mentorId);
+            const mentor = this.getMentor(i.mentorId);
             return `
               <div class="risk-card attention">
                 <img src="${i.avatar}" class="intern-avatar-sm" alt="">
