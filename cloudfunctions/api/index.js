@@ -106,17 +106,20 @@ function generateTasks(internId, position, currentWeek) {
   const tasks = [];
   const template = TEMPLATES[position];
   let taskId = 1;
-  for (let w = 1; w <= Math.min(currentWeek, 12); w++) {
+  // 只预生成前 2 周的基础模板任务，后续任务由导师真实分配
+  const maxPreGenWeek = Math.min(2, currentWeek);
+  for (let w = 1; w <= maxPreGenWeek; w++) {
     const weekPlan = template[w - 1];
-    weekPlan.tasks.forEach((taskTitle, idx) => {
+    weekPlan.tasks.forEach((taskTitle) => {
       tasks.push({
         id: taskId++,
         internId,
         week: w,
         title: taskTitle,
-        description: `${position}岗位第${w}周任务：${taskTitle}`,
-        completed: w < currentWeek || (w === currentWeek && idx < 2),
-        deadline: getWeekDeadline(w)
+        description: `${position}岗位第${w}周基础任务：${taskTitle}`,
+        completed: w < currentWeek,
+        deadline: getWeekDeadline(w),
+        source: 'template'
       });
     });
   }
@@ -280,10 +283,18 @@ const handlers = {
     return d;
   },
 
-  // 更新实习生
+  // 更新实习生（用 _id 定位文档，比 where 更可靠）
   async updateIntern({ id, data }) {
-    const res = await db.collection('interns').where({ id: parseInt(id) }).update({ data });
-    return { updated: res.updated };
+    try {
+      const docs = await db.collection('interns').where({ id: parseInt(id) }).get();
+      if (docs.data.length === 0) return { error: 'Intern not found', updated: 0 };
+      const docId = docs.data[0]._id;
+      const res = await db.collection('interns').doc(docId).update({ data });
+      return { updated: res.updated };
+    } catch (err) {
+      console.error('updateIntern error:', err);
+      return { error: err.message, updated: 0 };
+    }
   },
 
   // 添加日志
@@ -305,6 +316,23 @@ const handlers = {
       return await this.updateIntern({ id: internId, data: { tasks: intern.tasks } });
     }
     return { error: 'Task not found' };
+  },
+
+  // 添加任务（导师分配）
+  async addTask({ internId, task }) {
+    const intern = await this.getIntern({ id: internId });
+    if (!intern) return { error: 'Intern not found' };
+    intern.tasks = intern.tasks || [];
+    intern.tasks.push(task);
+    return await this.updateIntern({ id: internId, data: { tasks: intern.tasks } });
+  },
+
+  // 删除任务
+  async deleteTask({ internId, taskId }) {
+    const intern = await this.getIntern({ id: internId });
+    if (!intern) return { error: 'Intern not found' };
+    intern.tasks = intern.tasks.filter(t => t.id !== parseInt(taskId));
+    return await this.updateIntern({ id: internId, data: { tasks: intern.tasks } });
   },
 
   // 获取所有导师

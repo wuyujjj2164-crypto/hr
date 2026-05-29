@@ -106,7 +106,9 @@ function generateTasks(internId, position, currentWeek) {
   const template = TEMPLATES[position];
   let taskId = 1;
 
-  for (let w = 1; w <= Math.min(currentWeek, 12); w++) {
+  // 只预生成前 2 周的基础模板任务，后续任务由导师真实分配
+  const maxPreGenWeek = Math.min(2, currentWeek);
+  for (let w = 1; w <= maxPreGenWeek; w++) {
     const weekPlan = template[w - 1];
     weekPlan.tasks.forEach((taskTitle, idx) => {
       tasks.push({
@@ -114,9 +116,10 @@ function generateTasks(internId, position, currentWeek) {
         internId: internId,
         week: w,
         title: taskTitle,
-        description: `${position}岗位第${w}周任务：${taskTitle}`,
-        completed: w < currentWeek || (w === currentWeek && idx < 2),
-        deadline: getWeekDeadline(w)
+        description: `${position}岗位第${w}周基础任务：${taskTitle}`,
+        completed: w < currentWeek,
+        deadline: getWeekDeadline(w),
+        source: 'template'
       });
     });
   }

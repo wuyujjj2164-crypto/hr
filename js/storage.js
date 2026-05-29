@@ -56,14 +56,14 @@ const Storage = {
     this._initialized = true;
   },
 
-  // 判断当前使用哪种存储
-  isCloud() {
-    return this._useCloud;
+  // 判断当前使用哪种存储（同时检查 API 层的 auth 状态）
+  _shouldUseCloud() {
+    return this._useCloud && !API._authFailed;
   },
 
   // 获取完整数据（用于内存缓存同步）
   async _getAllData() {
-    if (this._useCloud) {
+    if (this._shouldUseCloud()) {
       const interns = await API.getInterns() || [];
       const mentors = await API.getMentors() || [];
       const config = await API.getConfig() || { currentRole: null, currentUserId: null };
@@ -76,7 +76,7 @@ const Storage = {
 
   // 获取所有实习生
   async getInterns() {
-    if (this._useCloud) {
+    if (this._shouldUseCloud()) {
       return await API.getInterns() || [];
     }
     return this.getAll()?.interns || [];
@@ -84,17 +84,19 @@ const Storage = {
 
   // 获取单个实习生
   async getIntern(id) {
-    if (this._useCloud) {
+    if (this._shouldUseCloud()) {
       return await API.getIntern(id);
     }
     const data = this.getAll();
     return data?.interns?.find(i => i.id === id);
   },
 
-  // 更新实习生（云端模式直接更新字段，本地模式全量替换）
+  // 更新实习生（云端模式只更新指定字段，本地模式全量替换）
   async updateIntern(intern) {
-    if (this._useCloud) {
-      return await API.updateIntern(intern.id, intern);
+    if (this._shouldUseCloud()) {
+      const result = await API.updateIntern(intern.id, intern);
+      if (result && result.updated > 0) return result;
+      console.log('Cloud updateIntern failed, falling back to localStorage');
     }
     const data = this.getAll();
     const idx = data.interns.findIndex(i => i.id === intern.id);
@@ -106,7 +108,7 @@ const Storage = {
 
   // 获取所有导师
   async getMentors() {
-    if (this._useCloud) {
+    if (this._shouldUseCloud()) {
       return await API.getMentors() || [];
     }
     return this.getAll()?.mentors || [];
@@ -114,7 +116,7 @@ const Storage = {
 
   // 获取单个导师
   async getMentor(id) {
-    if (this._useCloud) {
+    if (this._shouldUseCloud()) {
       return await API.getMentor(id);
     }
     const data = this.getAll();
@@ -123,8 +125,9 @@ const Storage = {
 
   // 设置角色
   async setRole(role, userId) {
-    if (this._useCloud) {
-      return await API.setConfig({ currentRole: role, currentUserId: userId });
+    if (this._shouldUseCloud()) {
+      const result = await API.setConfig({ currentRole: role, currentUserId: userId });
+      if (result) return result;
     }
     const data = this.getAll();
     data.currentRole = role;
@@ -134,9 +137,9 @@ const Storage = {
 
   // 获取角色
   async getRole() {
-    if (this._useCloud) {
+    if (this._shouldUseCloud()) {
       const config = await API.getConfig();
-      return { role: config?.currentRole, userId: config?.currentUserId };
+      if (config) return { role: config?.currentRole, userId: config?.currentUserId };
     }
     const data = this.getAll();
     return { role: data?.currentRole, userId: data?.currentUserId };
@@ -144,8 +147,10 @@ const Storage = {
 
   // 添加日志
   async addLog(internId, log) {
-    if (this._useCloud) {
-      return await API.addLog(internId, log);
+    if (this._shouldUseCloud()) {
+      const result = await API.addLog(internId, log);
+      if (result && !result.error) return result;
+      console.log('Cloud addLog failed, falling back to localStorage');
     }
     const intern = await this.getIntern(internId);
     if (intern) {
@@ -156,8 +161,10 @@ const Storage = {
 
   // 更新任务
   async updateTask(internId, taskId, completed) {
-    if (this._useCloud) {
-      return await API.updateTask(internId, taskId, completed);
+    if (this._shouldUseCloud()) {
+      const result = await API.updateTask(internId, taskId, completed);
+      if (result && !result.error) return result;
+      console.log('Cloud updateTask failed, falling back to localStorage');
     }
     const intern = await this.getIntern(internId);
     if (intern) {
@@ -169,9 +176,38 @@ const Storage = {
     }
   },
 
+  // 添加任务（导师分配）
+  async addTask(internId, task) {
+    if (this._shouldUseCloud()) {
+      const result = await API.addTask(internId, task);
+      if (result && !result.error) return result;
+      console.log('Cloud addTask failed, falling back to localStorage');
+    }
+    const intern = await this.getIntern(internId);
+    if (intern) {
+      intern.tasks = intern.tasks || [];
+      intern.tasks.push(task);
+      await this.updateIntern(intern);
+    }
+  },
+
+  // 删除任务
+  async deleteTask(internId, taskId) {
+    if (this._shouldUseCloud()) {
+      const result = await API.deleteTask(internId, taskId);
+      if (result && !result.error) return result;
+      console.log('Cloud deleteTask failed, falling back to localStorage');
+    }
+    const intern = await this.getIntern(internId);
+    if (intern) {
+      intern.tasks = intern.tasks.filter(t => t.id !== taskId);
+      await this.updateIntern(intern);
+    }
+  },
+
   // 添加聊天记录
   async addChat(role, message, isUser) {
-    if (this._useCloud) {
+    if (this._shouldUseCloud()) {
       // 云端暂不支持聊天记录，存本地
       const key = `tcamp_chat_${role}`;
       const chats = JSON.parse(localStorage.getItem(key) || '[]');
@@ -188,7 +224,7 @@ const Storage = {
 
   // 获取聊天记录
   async getChats(role) {
-    if (this._useCloud) {
+    if (this._shouldUseCloud()) {
       const key = `tcamp_chat_${role}`;
       return JSON.parse(localStorage.getItem(key) || '[]');
     }
@@ -197,8 +233,10 @@ const Storage = {
 
   // 添加日志评论
   async addLogComment(internId, week, comment) {
-    if (this._useCloud) {
-      return await API.addLogComment(internId, week, comment);
+    if (this._shouldUseCloud()) {
+      const result = await API.addLogComment(internId, week, comment);
+      if (result && !result.error) return result;
+      console.log('Cloud addLogComment failed, falling back to localStorage');
     }
     const intern = await this.getIntern(internId);
     if (intern) {
@@ -215,8 +253,6 @@ const Storage = {
 
   // 通知相关
   getNotifications(role, userId) {
-    // 通知计算需要同步获取数据，这里简化处理
-    // 实际使用时会先确保数据已加载
     const notifications = [];
     const today = new Date().toISOString().split('T')[0];
 

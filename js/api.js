@@ -123,5 +123,15 @@ const API = {
   // 添加日志评论
   async addLogComment(internId, week, comment) {
     return await this.call('addLogComment', { internId, week, comment });
+  },
+
+  // 添加任务（导师分配）
+  async addTask(internId, task) {
+    return await this.call('addTask', { internId, task });
+  },
+
+  // 删除任务
+  async deleteTask(internId, taskId) {
+    return await this.call('deleteTask', { internId, taskId });
   }
 };

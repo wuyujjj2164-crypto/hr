@@ -328,40 +328,72 @@ const App = {
 
   renderTasks(container) {
     const intern = this.getIntern(this.currentUserId);
-    const currentTasks = intern.tasks.filter(t => t.week === intern.currentWeek);
-    const completed = currentTasks.filter(t => t.completed).length;
-    const progress = currentTasks.length > 0 ? Math.round((completed / currentTasks.length) * 100) : 0;
+    // 按周分组，显示所有任务（不只是本周）
+    const tasksByWeek = {};
+    for (const task of intern.tasks) {
+      if (!tasksByWeek[task.week]) tasksByWeek[task.week] = [];
+      tasksByWeek[task.week].push(task);
+    }
+    const sortedWeeks = Object.keys(tasksByWeek).map(Number).sort((a, b) => a - b);
+
+    const totalTasks = intern.tasks.length;
+    const completedTasks = intern.tasks.filter(t => t.completed).length;
+    const overallProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
     container.innerHTML = `
       <div class="page-header">
-        <h2>本周任务</h2>
+        <h2>我的任务</h2>
         <div class="progress-ring">
-          <span class="progress-text">${progress}%</span>
+          <span class="progress-text">${overallProgress}%</span>
         </div>
       </div>
-      <div class="tasks-list">
-        ${currentTasks.map(task => `
-          <div class="task-card ${task.completed ? 'completed' : ''}" onclick="App.toggleTask(${task.id})">
-            <div class="task-checkbox">${task.completed ? '☑' : '☐'}</div>
-            <div class="task-info">
-              <div class="task-title">${task.title}</div>
-              <div class="task-desc">${task.description}</div>
-              <div class="task-meta">截止：${task.deadline}</div>
+      <div class="tasks-total-info">共 ${totalTasks} 个任务，已完成 ${completedTasks} 个</div>
+      ${sortedWeeks.length === 0 ? '<div class="empty-state">导师还未分配任务，请耐心等待~</div>' : ''}
+      ${sortedWeeks.map(week => {
+        const weekTasks = tasksByWeek[week];
+        const weekCompleted = weekTasks.filter(t => t.completed).length;
+        const isCurrentWeek = week === intern.currentWeek;
+        return `
+          <div class="task-week-section ${isCurrentWeek ? 'current-week' : ''}">
+            <div class="task-week-header">
+              <span class="task-week-label">第${week}周${isCurrentWeek ? '（本周）' : ''}</span>
+              <span class="task-week-progress">${weekCompleted}/${weekTasks.length}</span>
+            </div>
+            <div class="tasks-list">
+              ${weekTasks.map(task => `
+                <div class="task-card ${task.completed ? 'completed' : ''}" onclick="App.toggleTask(${task.id})">
+                  <div class="task-checkbox">${task.completed ? '☑' : '☐'}</div>
+                  <div class="task-info">
+                    <div class="task-title-row">
+                      <span class="task-title">${task.title}</span>
+                      ${task.source === 'mentor' ? '<span class="task-source-badge mentor">导师分配</span>' : '<span class="task-source-badge template">基础任务</span>'}
+                    </div>
+                    <div class="task-desc">${task.description}</div>
+                    <div class="task-meta">
+                      <span>截止：${task.deadline}</span>
+                      ${task.assignedBy ? `<span class="task-assigned">分配人：导师</span>` : ''}
+                    </div>
+                  </div>
+                </div>
+              `).join('')}
             </div>
           </div>
-        `).join('')}
-      </div>
-      ${currentTasks.length === 0 ? '<div class="empty-state">导师还未分配本周任务，稍后再来看看~</div>' : ''}
+        `;
+      }).join('')}
     `;
   },
 
   async toggleTask(taskId) {
-    const intern = this.getIntern(this.currentUserId);
-    const task = intern.tasks.find(t => t.id === taskId);
-    if (task) {
+    try {
+      const intern = this.getIntern(this.currentUserId);
+      const task = intern.tasks.find(t => t.id === taskId);
+      if (!task) return;
       await Storage.updateTask(this.currentUserId, taskId, !task.completed);
       await this.loadData();
       this.renderTasks(document.getElementById('main-content'));
+    } catch (err) {
+      console.error('[toggleTask] ERROR:', err);
+      alert('更新任务状态失败: ' + (err.message || '未知错误'));
     }
   },
 
@@ -660,15 +692,27 @@ const App = {
     const mentor = this.getMentor(this.currentUserId);
     const interns = this.getInterns().filter(i => i.mentorId === mentor.id);
 
+    // 收集所有已分配的任务（按实习生分组）
+    const allAssignedTasks = [];
+    for (const intern of interns) {
+      for (const task of intern.tasks) {
+        if (task.source === 'mentor') {
+          allAssignedTasks.push({ ...task, internName: intern.name });
+        }
+      }
+    }
+    allAssignedTasks.sort((a, b) => b.id - a.id);
+
     container.innerHTML = `
       <div class="page-header">
         <h2>任务分配</h2>
+        <span>给实习生布置具体任务</span>
       </div>
       <div class="form-card">
         <div class="form-group">
           <label>选择实习生</label>
-          <select id="task-intern">
-            ${interns.map(i => `<option value="${i.id}">${i.name}（${i.position}）</option>`).join('')}
+          <select id="task-intern" onchange="App.onInternSelectChange()">
+            ${interns.map(i => `<option value="${i.id}" data-week="${i.currentWeek}">${i.name}（${i.position} · 第${i.currentWeek}周）</option>`).join('')}
           </select>
         </div>
         <div class="form-group">
@@ -685,35 +729,108 @@ const App = {
           <label>任务描述</label>
           <textarea id="task-desc" rows="3" placeholder="详细描述任务要求和验收标准"></textarea>
         </div>
+        <div class="form-group">
+          <label>截止日期</label>
+          <input type="date" id="task-deadline">
+        </div>
         <button class="btn-primary" onclick="App.createTask()">分配任务</button>
       </div>
+
+      ${allAssignedTasks.length > 0 ? `
+        <div class="assigned-tasks-section">
+          <h3>已分配任务（${allAssignedTasks.length}个）</h3>
+          <div class="assigned-tasks-list">
+            ${allAssignedTasks.map(task => `
+              <div class="assigned-task-card ${task.completed ? 'completed' : ''}">
+                <div class="assigned-task-header">
+                  <span class="assigned-task-intern">${task.internName}</span>
+                  <span class="assigned-task-week">第${task.week}周</span>
+                  <button class="btn-delete" onclick="App.deleteAssignedTask(${task.internId}, ${task.id})">删除</button>
+                </div>
+                <div class="assigned-task-title">${task.title}</div>
+                <div class="assigned-task-desc">${task.description}</div>
+                <div class="assigned-task-meta">
+                  <span>截止：${task.deadline}</span>
+                  <span class="task-status ${task.completed ? 'done' : 'pending'}">${task.completed ? '已完成' : '进行中'}</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
     `;
+
+    // 默认选中第一个实习生的当前周
+    this.onInternSelectChange();
+    // 默认截止日期为一周后
+    const today = new Date();
+    today.setDate(today.getDate() + 7);
+    const deadlineInput = document.getElementById('task-deadline');
+    if (deadlineInput) {
+      deadlineInput.value = today.toISOString().split('T')[0];
+    }
+  },
+
+  onInternSelectChange() {
+    const select = document.getElementById('task-intern');
+    const weekSelect = document.getElementById('task-week');
+    if (!select || !weekSelect) return;
+    const selectedOption = select.options[select.selectedIndex];
+    const currentWeek = parseInt(selectedOption.dataset.week);
+    // 默认选中实习生的当前周
+    weekSelect.value = currentWeek;
   },
 
   async createTask() {
-    const internId = parseInt(document.getElementById('task-intern').value);
-    const week = parseInt(document.getElementById('task-week').value);
-    const title = document.getElementById('task-title').value.trim();
-    const desc = document.getElementById('task-desc').value.trim();
+    try {
+      const internId = parseInt(document.getElementById('task-intern').value);
+      const week = parseInt(document.getElementById('task-week').value);
+      const title = document.getElementById('task-title').value.trim();
+      const desc = document.getElementById('task-desc').value.trim();
+      const deadline = document.getElementById('task-deadline').value;
 
-    if (!title) { alert('请填写任务标题'); return; }
+      if (!title) { alert('请填写任务标题'); return; }
 
-    const intern = this.getIntern(internId);
-    const maxId = Math.max(...intern.tasks.map(t => t.id), 0);
-    intern.tasks.push({
-      id: maxId + 1,
-      internId,
-      week,
-      title,
-      description: desc || title,
-      completed: false,
-      deadline: getWeekDeadline(week)
-    });
-    await Storage.updateIntern(intern);
-    await this.loadData();
-    alert('任务分配成功！');
-    document.getElementById('task-title').value = '';
-    document.getElementById('task-desc').value = '';
+      const intern = this.getIntern(internId);
+      const maxId = intern.tasks.length > 0 ? Math.max(...intern.tasks.map(t => t.id)) : 0;
+
+      const task = {
+        id: maxId + 1,
+        internId,
+        week,
+        title,
+        description: desc || title,
+        completed: false,
+        deadline: deadline || getWeekDeadline(week),
+        source: 'mentor',
+        assignedBy: this.currentUserId,
+        assignedAt: new Date().toISOString().split('T')[0]
+      };
+
+      await Storage.addTask(internId, task);
+      await this.loadData();
+      this.showToast('任务分配成功！');
+      document.getElementById('task-title').value = '';
+      document.getElementById('task-desc').value = '';
+      // 刷新任务分配页面，显示新任务
+      this.renderAssignTask(document.getElementById('main-content'));
+    } catch (err) {
+      console.error('[createTask] ERROR:', err);
+      alert('任务分配失败: ' + (err.message || '未知错误'));
+    }
+  },
+
+  async deleteAssignedTask(internId, taskId) {
+    if (!confirm('确定要删除这个任务吗？')) return;
+    try {
+      await Storage.deleteTask(internId, taskId);
+      await this.loadData();
+      this.showToast('任务已删除');
+      this.renderAssignTask(document.getElementById('main-content'));
+    } catch (err) {
+      console.error('[deleteAssignedTask] ERROR:', err);
+      alert('删除失败: ' + (err.message || '未知错误'));
+    }
   },
 
   renderViewLogs(container) {
