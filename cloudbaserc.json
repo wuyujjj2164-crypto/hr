@@ -1,17 +1,14 @@
 {
   "version": "2.0",
   "envId": "zuoye-d1gabtew72ef97c74",
-  "framework": {
-    "name": "tcamp-intern-dashboard",
-    "plugins": {
-      "client": {
-        "use": "@cloudbase/framework-plugin-website",
-        "inputs": {
-          "outputPath": ".",
-          "cloudPath": "/",
-          "ignore": [".git", "node_modules", "cloudbaserc.json"]
-        }
-      }
+  "functionRoot": "cloudfunctions",
+  "functions": [
+    {
+      "name": "api",
+      "timeout": 15,
+      "handler": "index.main",
+      "runtime": "Nodejs18.15",
+      "installDependency": true
     }
-  }
+  ]
 }

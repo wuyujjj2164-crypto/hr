@@ -146,7 +146,7 @@ function generateLogs(internId, currentWeek) {
     '计划梳理本周学到的知识，形成文档沉淀。',
     '下周主动向导师请教职业规划相关问题。'
   ];
-  for (let w = 1; w < currentWeek; w++) {
+  for (let w = 1; w < currentWeek - 1; w++) {
     logs.push({
       week: w,
       summary: summaries[w % summaries.length],
@@ -196,6 +196,33 @@ function getWeekDeadline(week) {
   return base.toISOString().split('T')[0];
 }
 
+// ========== 修复预生成日志 ==========
+// 把每位实习生最新一周（currentWeek - 1）的预生成日志删掉，留出空间让实习生自己写
+async function fixPreGeneratedLogs() {
+  try {
+    const internsCol = db.collection('interns');
+    const res = await internsCol.get();
+    let fixedCount = 0;
+
+    for (const doc of res.data) {
+      const intern = doc;
+      const targetWeek = intern.currentWeek - 1;
+      const hasPreGenerated = intern.logs && intern.logs.some(l => l.week === targetWeek);
+
+      if (hasPreGenerated) {
+        const newLogs = intern.logs.filter(l => l.week !== targetWeek);
+        await internsCol.doc(doc._id).update({ data: { logs: newLogs } });
+        fixedCount++;
+      }
+    }
+
+    return { fixedCount };
+  } catch (err) {
+    console.error('fixPreGeneratedLogs error:', err);
+    return { fixedCount: 0, error: err.message };
+  }
+}
+
 // ========== 数据库初始化 ==========
 async function initDatabase() {
   try {
@@ -210,7 +237,9 @@ async function initDatabase() {
     // 检查是否已初始化
     const count = await internsCol.count();
     if (count.total > 0) {
-      return { initialized: false, message: 'Database already initialized' };
+      // 数据库已存在，自动修复预生成日志（幂等操作，可重复执行）
+      const fixed = await fixPreGeneratedLogs();
+      return { initialized: false, message: 'Database already initialized', fixed };
     }
 
     // 批量写入实习生

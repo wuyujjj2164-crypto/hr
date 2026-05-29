@@ -10,11 +10,41 @@ if (typeof cloudbase !== 'undefined') {
 
 const API = {
   _useCloud: !!cloudApp,
+  _authReady: false,
+  _authFailed: false,
+
+  // 匿名登录（CloudBase 云函数调用需要先登录）
+  async ensureAuth() {
+    if (this._authReady || !cloudApp || this._authFailed) return;
+    try {
+      const auth = cloudApp.auth();
+      if (!auth || typeof auth.signInAnonymously !== 'function') {
+        console.log('Anonymous login not supported in this SDK version');
+        this._authFailed = true;
+        return;
+      }
+      await auth.signInAnonymously();
+      this._authReady = true;
+      console.log('CloudBase anonymous login success');
+    } catch (e) {
+      console.log('Anonymous login failed:', e.message);
+      this._authFailed = true;
+    }
+  },
 
   // 使用 CloudBase JS SDK 的 callFunction 调用云函数
   async call(action, data = {}) {
-    if (!this._useCloud || !cloudApp) {
+    if (!this._useCloud || !cloudApp || this._authFailed) {
       console.log('CloudBase not available, falling back to localStorage');
+      return null;
+    }
+
+    // 确保已匿名登录
+    await this.ensureAuth();
+
+    // 如果登录失败，回退到 localStorage
+    if (this._authFailed) {
+      console.log('Auth failed, falling back to localStorage');
       return null;
     }
 
@@ -32,6 +62,10 @@ const API = {
       }
     } catch (err) {
       console.error('Cloud function call failed:', err);
+      // 权限错误时标记云端不可用，后续调用直接回退本地
+      if (err.message && err.message.includes('PERMISSION_DENIED')) {
+        this._authFailed = true;
+      }
       return null;
     }
   },

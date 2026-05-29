@@ -26,8 +26,9 @@ const App = {
 
   // 从后端/本地加载所有数据到内存缓存
   async loadData() {
-    this._data.interns = await this.getInterns() || [];
-    this._data.mentors = await this.getMentors() || [];
+    const data = await Storage._getAllData();
+    this._data.interns = data.interns || [];
+    this._data.mentors = data.mentors || [];
     window._appData = this._data;
   },
 
@@ -277,6 +278,23 @@ const App = {
     this.showRoleSelect();
   },
 
+  showToast(message) {
+    const existing = document.getElementById('toast-msg');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'toast-msg';
+    toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#10B981;color:#fff;padding:10px 24px;border-radius:20px;font-size:14px;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:fadeInDown 0.3s ease;';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transition = 'opacity 0.5s ease';
+      setTimeout(() => toast.remove(), 500);
+    }, 2500);
+  },
+
   // ===== 实习生视图 =====
   renderRoadmap(container) {
     const intern = this.getIntern(this.currentUserId);
@@ -425,46 +443,139 @@ const App = {
   },
 
   async submitLog() {
-    const summary = document.getElementById('log-summary').value.trim();
-    const difficulties = document.getElementById('log-difficulties').value.trim();
-    const plan = document.getElementById('log-plan').value.trim();
+    try {
+      const summary = document.getElementById('log-summary').value.trim();
+      const difficulties = document.getElementById('log-difficulties').value.trim();
+      const plan = document.getElementById('log-plan').value.trim();
 
-    if (!summary) {
-      alert('请填写本周总结');
-      return;
+      if (!summary) {
+        alert('请填写本周总结');
+        return;
+      }
+
+      console.log('[submitLog] Step 1: summary valid');
+
+      const intern = this.getIntern(this.currentUserId);
+      if (!intern) {
+        alert('获取实习生信息失败，请刷新页面重试');
+        console.error('[submitLog] intern not found for id:', this.currentUserId);
+        return;
+      }
+
+      const week = intern.currentWeek - 1;
+      console.log('[submitLog] Step 2: intern found, week =', week);
+
+      // 生成AI反馈
+      const aiFeedback = this.generateLogFeedback(week, summary, difficulties, intern.position);
+      console.log('[submitLog] Step 3: aiFeedback generated');
+
+      const log = {
+        week: week,
+        summary: summary,
+        difficulties: difficulties || '暂无',
+        nextWeekPlan: plan || '暂无',
+        aiFeedback: aiFeedback,
+        submittedAt: new Date().toISOString().split('T')[0]
+      };
+
+      console.log('[submitLog] Step 4: calling Storage.addLog...');
+      const addResult = await Storage.addLog(this.currentUserId, log);
+      console.log('[submitLog] Step 5: Storage.addLog result:', addResult);
+
+      console.log('[submitLog] Step 6: reloading data...');
+      await this.loadData();
+      console.log('[submitLog] Step 7: data reloaded, logs count:', this.getIntern(this.currentUserId)?.logs?.length);
+
+      console.log('[submitLog] Step 8: re-rendering logs...');
+      this.renderLogs(document.getElementById('main-content'));
+
+      // 显示成功提示
+      if (typeof this.showToast === 'function') {
+        this.showToast('日志提交成功！AI反馈已生成');
+      } else {
+        alert('日志提交成功！AI反馈已生成');
+      }
+      console.log('[submitLog] Step 9: DONE');
+    } catch (err) {
+      console.error('[submitLog] ERROR:', err);
+      alert('提交失败: ' + (err.message || '未知错误') + '\n\n请按 F12 打开控制台查看详细错误信息');
     }
-
-    const intern = this.getIntern(this.currentUserId);
-    const week = intern.currentWeek - 1;
-
-    // 生成AI反馈
-    const aiFeedback = this.generateLogFeedback(week, summary, difficulties, intern.position);
-
-    const log = {
-      week: week,
-      summary: summary,
-      difficulties: difficulties || '暂无',
-      nextWeekPlan: plan || '暂无',
-      aiFeedback: aiFeedback,
-      submittedAt: new Date().toISOString().split('T')[0]
-    };
-
-    await Storage.addLog(this.currentUserId, log);
-    await this.loadData();
-    this.renderLogs(document.getElementById('main-content'));
   },
 
   generateLogFeedback(week, summary, difficulties, position) {
-    const highlights = ['学习态度', '技术能力', '业务理解', '团队协作', '主动思考'];
-    const highlight = highlights[week % highlights.length];
-    const suggestions = {
-      '研发': ['多阅读优秀代码，学习设计模式', '尝试写技术博客沉淀知识', '主动参与Code Review'],
-      '产品': ['多和用户交流，培养用户思维', '关注数据指标，用数据说话', '学习竞品分析方法论'],
-      '销售': ['多练习话术，提升表达力', '建立客户档案，精细化管理', '复盘每次客户沟通']
-    };
-    const suggestion = (suggestions[position] || suggestions['研发'])[week % 3];
+    const s = summary || '';
+    const d = difficulties || '';
+    const len = s.length;
 
-    return `第${week}周的总结很到位！能主动反思和记录，说明你有很强的自我驱动力。我在你的总结中看到了${highlight}方面的闪光点，这是非常宝贵的特质。关于你提到的"${difficulties.substring(0, 20)}"，建议你在下周的工作中：${suggestion}。继续加油，期待你的持续成长！`;
+    // ===== 1. 内容充实度评级 =====
+    let richness = '';
+    if (len < 20) {
+      richness = '本周总结偏简短，建议下周可以多展开一些具体的案例和收获细节，让复盘更有价值。';
+    } else if (len < 60) {
+      richness = '总结内容比较清晰，如果能补充1-2个具体的数据或成果，会更具说服力。';
+    } else {
+      richness = '总结非常充实，能看出你对本周工作做了系统性的梳理，这种复盘习惯值得保持！';
+    }
+
+    // ===== 2. 关键词匹配：从总结中提取闪光点 =====
+    const keywordMap = [
+      { keys: ['bug','修复','debug','调试','性能','优化','重构','代码','git','commit','pr','review','单元测试','接口','api','数据库','sql','架构','设计模式','算法'], dim: '技术攻坚能力', praise: '你在技术细节上很扎实，能独立排查和解决问题。' },
+      { keys: ['需求','prd','原型','figma','axure','用户调研','访谈','数据分析','埋点','转化率','ab测试','竞品','流程图','文档'], dim: '产品思维', praise: '你展现出了不错的产品敏感度，能从用户视角思考问题。' },
+      { keys: ['客户','拜访','沟通','谈判','方案','合同','签约','成交','销售','话术','回款','客情','渠道'], dim: '业务拓展能力', praise: '你在客户沟通和商务推进上很有主动性，这是销售岗位的核心竞争力。' },
+      { keys: ['会议','讨论','协作','配合','跨部门','对齐','同步','团队','分享','评审','反馈'], dim: '沟通协作能力', praise: '你非常注重团队协作，能有效推动信息同步和跨团队合作。' },
+      { keys: ['学习','看书','课程','培训','研究','调研','沉淀','总结','文档','wiki','博客'], dim: '主动学习能力', praise: '你保持了很强的学习热情，能把输入转化为可沉淀的知识资产。' },
+      { keys: ['独立','主导','负责','推进','落地','闭环','owner','owner意识','责任心'], dim: 'Owner意识', praise: '你有很强的责任心和推动力，能主动对结果负责，这是非常难得的品质。' }
+    ];
+
+    let matchedDim = '';
+    let matchedPraise = '';
+    let maxScore = 0;
+    for (const item of keywordMap) {
+      const score = item.keys.reduce((sum, k) => sum + (s.includes(k) ? 1 : 0), 0);
+      if (score > maxScore) {
+        maxScore = score;
+        matchedDim = item.dim;
+        matchedPraise = item.praise;
+      }
+    }
+    if (!matchedDim) {
+      matchedDim = '工作执行力';
+      matchedPraise = '你在本周的任务执行上表现出了稳定的输出。';
+    }
+
+    // ===== 3. 困难点分析：给出针对性建议 =====
+    const diffMap = [
+      { keys: ['不熟悉','不懂','不会','第一次','陌生','不了解','没接触'], advice: '面对新领域，建议采用"小步快跑"策略：先跑通最小闭环，再逐步深入。别怕问问题，导师和文档都是你的资源。' },
+      { keys: ['时间','来不及','加班','忙','排期','节奏','效率','拖延'], advice: '时间管理是职场必修课。建议每天早上用5分钟列出今日TOP3，把最难的任务放在精力最好的时段攻克。' },
+      { keys: ['沟通','协调','对齐','推不动','不配合','信息差','理解偏差'], advice: '沟通问题往往源于信息不对称。建议重要结论都落到书面（邮件/文档），并主动确认对方理解是否一致。' },
+      { keys: ['技术','代码','bug','报错','性能','架构','设计','难点'], advice: '技术难点建议先拆解：是知识盲区还是方案选择问题？知识盲区可以补，方案问题可以多和导师讨论trade-off。' },
+      { keys: ['压力','焦虑','紧张','担心','害怕','没信心','迷茫'], advice: '有压力说明你在上坡路上。建议把大目标拆解成周目标，每完成一个小目标就给自己正反馈，积累信心。' },
+      { keys: ['需求','变更','反复','不确定','老板','产品','客户','想法'], advice: '需求变更是常态。建议养成"变更即记录"的习惯，每次变更都同步到群里并确认影响范围，保护自己 also 保护项目。' }
+    ];
+
+    let matchedAdvice = '';
+    maxScore = 0;
+    for (const item of diffMap) {
+      const score = item.keys.reduce((sum, k) => sum + (d.includes(k) ? 1 : 0), 0);
+      if (score > maxScore) {
+        maxScore = score;
+        matchedAdvice = item.advice;
+      }
+    }
+    if (!matchedAdvice) {
+      matchedAdvice = '遇到困难是正常的成长信号。建议把问题拆解成"可控的小块"，逐个击破，同时善用团队资源。';
+    }
+
+    // ===== 4. 岗位专属建议 =====
+    const positionTips = {
+      '研发': '技术成长没有捷径，建议每周精读一篇团队优秀代码或技术文章，把学到的 pattern 记录下来，三个月后回头看会有惊喜。',
+      '产品': '产品sense需要持续培养，建议多关注用户反馈渠道（客服、社群、评论），真正理解用户的痛点比画原型更重要。',
+      '销售': '销售的核心是信任，建议每次客户沟通后都写一段简短的复盘：客户关注点是什么？我回应得怎么样？下次如何更好？'
+    };
+    const posTip = positionTips[position] || positionTips['研发'];
+
+    // ===== 5. 组装反馈 =====
+    return `【第${week}周成长反馈】\n\n${richness}\n\n我在你的总结中重点看到了「${matchedDim}」方面的亮点：${matchedPraise}\n\n关于你提到的困难——"${d.substring(0, 30)}${d.length > 30 ? '...' : ''}"，我的建议是：${matchedAdvice}\n\n【${position}岗位小贴士】${posTip}\n\n期待你在下周继续保持这种复盘节奏，持续成长！`;
   },
 
   renderResources(container) {

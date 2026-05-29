@@ -25,7 +25,8 @@ const Storage = {
 
     // 如果云端不可用，使用 localStorage
     if (!this._useCloud) {
-      if (!localStorage.getItem(STORAGE_KEY)) {
+      const existing = localStorage.getItem(STORAGE_KEY);
+      if (!existing) {
         const initialData = {
           interns: generateInterns(),
           mentors: MENTORS,
@@ -34,6 +35,21 @@ const Storage = {
           initialized: true
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(initialData));
+      } else {
+        // 修复已存在的旧数据：删除最新一周预生成日志，留出空间让实习生自己写
+        const data = JSON.parse(existing);
+        let modified = false;
+        for (const intern of data.interns || []) {
+          const targetWeek = intern.currentWeek - 1;
+          if (intern.logs && intern.logs.some(l => l.week === targetWeek)) {
+            intern.logs = intern.logs.filter(l => l.week !== targetWeek);
+            modified = true;
+          }
+        }
+        if (modified) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+          console.log('Fixed pre-generated logs in localStorage');
+        }
       }
     }
 
@@ -71,7 +87,8 @@ const Storage = {
     if (this._useCloud) {
       return await API.getIntern(id);
     }
-    return this.getInterns().find(i => i.id === id);
+    const data = this.getAll();
+    return data?.interns?.find(i => i.id === id);
   },
 
   // 更新实习生（云端模式直接更新字段，本地模式全量替换）
@@ -100,7 +117,8 @@ const Storage = {
     if (this._useCloud) {
       return await API.getMentor(id);
     }
-    return this.getMentors().find(m => m.id === id);
+    const data = this.getAll();
+    return data?.mentors?.find(m => m.id === id);
   },
 
   // 设置角色
@@ -129,10 +147,10 @@ const Storage = {
     if (this._useCloud) {
       return await API.addLog(internId, log);
     }
-    const intern = this.getIntern(internId);
+    const intern = await this.getIntern(internId);
     if (intern) {
       intern.logs.push(log);
-      this.updateIntern(intern);
+      await this.updateIntern(intern);
     }
   },
 
@@ -141,12 +159,12 @@ const Storage = {
     if (this._useCloud) {
       return await API.updateTask(internId, taskId, completed);
     }
-    const intern = this.getIntern(internId);
+    const intern = await this.getIntern(internId);
     if (intern) {
       const task = intern.tasks.find(t => t.id === taskId);
       if (task) {
         task.completed = completed;
-        this.updateIntern(intern);
+        await this.updateIntern(intern);
       }
     }
   },
@@ -182,13 +200,13 @@ const Storage = {
     if (this._useCloud) {
       return await API.addLogComment(internId, week, comment);
     }
-    const intern = this.getIntern(internId);
+    const intern = await this.getIntern(internId);
     if (intern) {
       const log = intern.logs.find(l => l.week === week);
       if (log) {
         if (!log.comments) log.comments = [];
         log.comments.push(comment);
-        this.updateIntern(intern);
+        await this.updateIntern(intern);
       }
     }
   },

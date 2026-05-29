@@ -147,7 +147,7 @@ function generateLogs(internId, currentWeek) {
     '下周主动向导师请教职业规划相关问题。'
   ];
 
-  for (let w = 1; w < currentWeek; w++) {
+  for (let w = 1; w < currentWeek - 1; w++) {
     logs.push({
       week: w,
       summary: summaries[w % summaries.length],
