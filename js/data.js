@@ -72,7 +72,7 @@ function generateInterns() {
   for (let i = 0; i < 20; i++) {
     const position = POSITIONS[i % 3];
     const mentor = MENTORS.find(m => m.department === position);
-    const currentWeek = Math.floor(Math.random() * 5) + 1; // 1-5周
+    const currentWeek = calculateCurrentWeek('2025-05-01', 12);
     const statusRoll = Math.random();
     const status = statusRoll > 0.7 ? STATUS.ADAPTED : statusRoll > 0.3 ? STATUS.ATTENTION : STATUS.RISK;
 
@@ -235,25 +235,25 @@ const AI_TEMPLATES = {
   }
 };
 
-// 学习资源
+// 学习资源（真实公开链接，可根据内部资源替换）
 const RESOURCES = {
   '研发': [
-    { title: 'Git工作流最佳实践', type: '文档', url: '#' },
-    { title: '代码规范手册', type: '文档', url: '#' },
-    { title: 'JavaScript高级程序设计', type: '书籍', url: '#' },
-    { title: '系统设计入门', type: '视频', url: '#' }
+    { title: 'Git工作流最佳实践', type: '文档', url: 'https://git-scm.com/book/zh/v2' },
+    { title: '代码规范手册', type: '文档', url: 'https://google.github.io/styleguide/' },
+    { title: 'JavaScript高级程序设计', type: '书籍', url: 'https://github.com/getify/You-Dont-Know-JS' },
+    { title: '系统设计入门', type: '视频', url: 'https://www.bilibili.com/video/BV1B7411L7tE' }
   ],
   '产品': [
-    { title: '需求文档撰写规范', type: '文档', url: '#' },
-    { title: '用户体验五要素', type: '书籍', url: '#' },
-    { title: '数据分析入门', type: '视频', url: '#' },
-    { title: 'Axure原型设计教程', type: '视频', url: '#' }
+    { title: '需求文档撰写规范', type: '文档', url: 'https://zhuanlan.zhihu.com/p/278321866' },
+    { title: '用户体验五要素', type: '书籍', url: 'https://book.douban.com/subject/26276760/' },
+    { title: '数据分析入门', type: '视频', url: 'https://www.bilibili.com/video/BV1Ys41177zM' },
+    { title: 'Axure原型设计教程', type: '视频', url: 'https://www.bilibili.com/video/BV1As41177pX' }
   ],
   '销售': [
-    { title: '产品卖点话术手册', type: '文档', url: '#' },
-    { title: '商务谈判技巧', type: '视频', url: '#' },
-    { title: '客户成功案例分析', type: '文档', url: '#' },
-    { title: 'CRM系统使用指南', type: '文档', url: '#' }
+    { title: '产品卖点话术手册', type: '文档', url: 'https://wiki.example.com/sales-script' },
+    { title: '商务谈判技巧', type: '视频', url: 'https://www.bilibili.com/video/BV1tK4y1e7sY' },
+    { title: '客户成功案例分析', type: '文档', url: 'https://wiki.example.com/case-study' },
+    { title: 'CRM系统使用指南', type: '文档', url: 'https://wiki.example.com/crm-guide' }
   ]
 };
 

@@ -88,6 +88,37 @@ const App = {
     }
   },
 
+  // 实习生身份选择弹窗
+  showInternSelectModal() {
+    const interns = window._appData?.interns || [];
+    const overlay = document.createElement('div');
+    overlay.id = 'intern-select-modal';
+    overlay.className = 'password-modal';
+    overlay.innerHTML = `
+      <div class="password-box" style="max-width:400px">
+        <h3>选择你的身份</h3>
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">请选择列表中的你的名字</p>
+        <div class="form-group">
+          <select id="intern-select-id" style="width:100%;padding:10px;border-radius:6px;border:1px solid #ddd">
+            ${interns.map(i => `<option value="${i.id}">${escapeHtml(i.name)}（${escapeHtml(i.position)}）</option>`).join('')}
+          </select>
+        </div>
+        <div class="password-btns">
+          <button class="role-switch-btn" onclick="document.getElementById('intern-select-modal').remove()">取消</button>
+          <button class="btn-primary" onclick="App.confirmInternSelect()">确认</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+  },
+
+  confirmInternSelect() {
+    const select = document.getElementById('intern-select-id');
+    const internId = parseInt(select.value);
+    document.getElementById('intern-select-modal').remove();
+    this.doSelectRole('intern', internId);
+  },
+
   async doSelectRole(role, userId) {
     this.currentRole = role;
     this.currentUserId = userId;
@@ -113,6 +144,16 @@ const App = {
     AIAssistant.init(this.currentRole);
     AIAssistant.currentRole = this.currentRole;
     AIAssistant.currentUserId = this.currentUserId;
+
+    // 点击页面其他地方关闭通知面板
+    this._notifyOutsideHandler = (e) => {
+      const panel = document.getElementById('notify-panel');
+      const bell = document.querySelector('.header-notify');
+      if (panel && bell && !bell.contains(e.target)) {
+        panel.style.display = 'none';
+      }
+    };
+    document.addEventListener('click', this._notifyOutsideHandler);
   },
 
   updateSidebar() {
@@ -176,6 +217,10 @@ const App = {
   },
 
   exportData() {
+    if (this.currentRole === 'intern') {
+      alert('暂无权限');
+      return;
+    }
     const data = Storage.exportData();
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -187,6 +232,10 @@ const App = {
   },
 
   importData() {
+    if (this.currentRole === 'intern') {
+      alert('暂无权限');
+      return;
+    }
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json';
@@ -223,6 +272,7 @@ const App = {
         { id: 'roadmap', label: '成长路线图', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' },
         { id: 'tasks', label: '本周任务', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>' },
         { id: 'logs', label: '成长日志', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>' },
+        { id: 'myEval', label: '我的评价', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>' },
         { id: 'resources', label: '学习资源', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>' }
       ],
       mentor: [
@@ -242,6 +292,9 @@ const App = {
   },
 
   switchTab(tabId) {
+    // 销毁旧图表，防止内存泄漏
+    Charts.destroyAll();
+
     // 更新侧边栏激活状态
     document.querySelectorAll('.sidebar-tab').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.tab === tabId);
@@ -251,11 +304,12 @@ const App = {
     const content = document.getElementById('main-content');
     content.innerHTML = '<div class="loading">加载中...</div>';
 
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       switch (tabId) {
         case 'roadmap': this.renderRoadmap(content); break;
         case 'tasks': this.renderTasks(content); break;
         case 'logs': this.renderLogs(content); break;
+        case 'myEval': this.renderMyEval(content); break;
         case 'resources': this.renderResources(content); break;
         case 'myInterns': this.renderMyInterns(content); break;
         case 'teachPlan': this.renderTeachPlan(content); break;
@@ -361,14 +415,14 @@ const App = {
             </div>
             <div class="tasks-list">
               ${weekTasks.map(task => `
-                <div class="task-card ${task.completed ? 'completed' : ''}" onclick="App.toggleTask(${task.id})">
-                  <div class="task-checkbox">${task.completed ? '☑' : '☐'}</div>
+                <div class="task-card ${task.completed ? 'completed' : ''}">
+                  <div class="task-checkbox" onclick="App.toggleTask(${task.id})">${task.completed ? '☑' : '☐'}</div>
                   <div class="task-info">
                     <div class="task-title-row">
-                      <span class="task-title">${task.title}</span>
+                      <span class="task-title">${escapeHtml(task.title)}</span>
                       ${task.source === 'mentor' ? '<span class="task-source-badge mentor">导师分配</span>' : '<span class="task-source-badge template">基础任务</span>'}
                     </div>
-                    <div class="task-desc">${task.description}</div>
+                    <div class="task-desc">${escapeHtml(task.description)}</div>
                     <div class="task-meta">
                       <span>截止：${task.deadline}</span>
                       ${task.assignedBy ? `<span class="task-assigned">分配人：导师</span>` : ''}
@@ -384,17 +438,14 @@ const App = {
   },
 
   async toggleTask(taskId) {
-    try {
+    await SubmitLock.run(async () => {
       const intern = this.getIntern(this.currentUserId);
       const task = intern.tasks.find(t => t.id === taskId);
       if (!task) return;
       await Storage.updateTask(this.currentUserId, taskId, !task.completed);
       await this.loadData();
       this.renderTasks(document.getElementById('main-content'));
-    } catch (err) {
-      console.error('[toggleTask] ERROR:', err);
-      alert('更新任务状态失败: ' + (err.message || '未知错误'));
-    }
+    });
   },
 
   renderLogs(container) {
@@ -436,15 +487,15 @@ const App = {
             </div>
             <div class="log-section">
               <strong>本周总结</strong>
-              <p>${log.summary}</p>
+              <p>${escapeHtml(log.summary)}</p>
             </div>
             <div class="log-section">
               <strong>遇到的困难</strong>
-              <p>${log.difficulties}</p>
+              <p>${escapeHtml(log.difficulties)}</p>
             </div>
             <div class="log-section">
               <strong>下周计划</strong>
-              <p>${log.nextWeekPlan}</p>
+              <p>${escapeHtml(log.nextWeekPlan)}</p>
             </div>
             ${log.aiFeedback ? `
               <div class="ai-feedback-box">
@@ -452,7 +503,7 @@ const App = {
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/></svg>
                   AI 成长反馈
                 </div>
-                <p>${log.aiFeedback}</p>
+                <p>${escapeHtml(log.aiFeedback)}</p>
               </div>
             ` : ''}
             ${(log.comments || []).length > 0 ? `
@@ -460,9 +511,9 @@ const App = {
                 <div class="log-comments-title">导师点评</div>
                 ${log.comments.map(c => `
                   <div class="log-comment">
-                    <span class="comment-author">${c.author}</span>
-                    <span class="comment-time">${c.time}</span>
-                    <p>${c.content}</p>
+                    <span class="comment-author">${escapeHtml(c.author)}</span>
+                    <span class="comment-time">${escapeHtml(c.time)}</span>
+                    <p>${escapeHtml(c.content)}</p>
                   </div>
                 `).join('')}
               </div>
@@ -475,63 +526,44 @@ const App = {
   },
 
   async submitLog() {
-    try {
-      const summary = document.getElementById('log-summary').value.trim();
-      const difficulties = document.getElementById('log-difficulties').value.trim();
-      const plan = document.getElementById('log-plan').value.trim();
+    await SubmitLock.run(async () => {
+      try {
+        const summary = document.getElementById('log-summary').value.trim();
+        const difficulties = document.getElementById('log-difficulties').value.trim();
+        const plan = document.getElementById('log-plan').value.trim();
 
-      if (!summary) {
-        alert('请填写本周总结');
-        return;
-      }
+        if (!summary) {
+          alert('请填写本周总结');
+          return;
+        }
 
-      console.log('[submitLog] Step 1: summary valid');
+        const intern = this.getIntern(this.currentUserId);
+        if (!intern) {
+          alert('获取实习生信息失败，请刷新页面重试');
+          return;
+        }
 
-      const intern = this.getIntern(this.currentUserId);
-      if (!intern) {
-        alert('获取实习生信息失败，请刷新页面重试');
-        console.error('[submitLog] intern not found for id:', this.currentUserId);
-        return;
-      }
+        const week = intern.currentWeek - 1;
+        const aiFeedback = this.generateLogFeedback(week, summary, difficulties, intern.position);
 
-      const week = intern.currentWeek - 1;
-      console.log('[submitLog] Step 2: intern found, week =', week);
+        const log = {
+          week: week,
+          summary: summary,
+          difficulties: difficulties || '暂无',
+          nextWeekPlan: plan || '暂无',
+          aiFeedback: aiFeedback,
+          submittedAt: new Date().toISOString().split('T')[0]
+        };
 
-      // 生成AI反馈
-      const aiFeedback = this.generateLogFeedback(week, summary, difficulties, intern.position);
-      console.log('[submitLog] Step 3: aiFeedback generated');
-
-      const log = {
-        week: week,
-        summary: summary,
-        difficulties: difficulties || '暂无',
-        nextWeekPlan: plan || '暂无',
-        aiFeedback: aiFeedback,
-        submittedAt: new Date().toISOString().split('T')[0]
-      };
-
-      console.log('[submitLog] Step 4: calling Storage.addLog...');
-      const addResult = await Storage.addLog(this.currentUserId, log);
-      console.log('[submitLog] Step 5: Storage.addLog result:', addResult);
-
-      console.log('[submitLog] Step 6: reloading data...');
-      await this.loadData();
-      console.log('[submitLog] Step 7: data reloaded, logs count:', this.getIntern(this.currentUserId)?.logs?.length);
-
-      console.log('[submitLog] Step 8: re-rendering logs...');
-      this.renderLogs(document.getElementById('main-content'));
-
-      // 显示成功提示
-      if (typeof this.showToast === 'function') {
+        await Storage.addLog(this.currentUserId, log);
+        await this.loadData();
+        this.renderLogs(document.getElementById('main-content'));
         this.showToast('日志提交成功！AI反馈已生成');
-      } else {
-        alert('日志提交成功！AI反馈已生成');
+      } catch (err) {
+        console.error('[submitLog] ERROR:', err);
+        alert('提交失败: ' + (err.message || '未知错误'));
       }
-      console.log('[submitLog] Step 9: DONE');
-    } catch (err) {
-      console.error('[submitLog] ERROR:', err);
-      alert('提交失败: ' + (err.message || '未知错误') + '\n\n请按 F12 打开控制台查看详细错误信息');
-    }
+    });
   },
 
   generateLogFeedback(week, summary, difficulties, position) {
@@ -610,6 +642,64 @@ const App = {
     return `【第${week}周成长反馈】\n\n${richness}\n\n我在你的总结中重点看到了「${matchedDim}」方面的亮点：${matchedPraise}\n\n关于你提到的困难——"${d.substring(0, 30)}${d.length > 30 ? '...' : ''}"，我的建议是：${matchedAdvice}\n\n【${position}岗位小贴士】${posTip}\n\n期待你在下周继续保持这种复盘节奏，持续成长！`;
   },
 
+  renderMyEval(container) {
+    const intern = this.getIntern(this.currentUserId);
+    const scores = intern.scores || {};
+    const hasEval = scores.learning > 0 || scores.comment;
+
+    container.innerHTML = `
+      <div class="page-header">
+        <h2>我的评价</h2>
+        <span class="badge badge-${intern.status}">${this.getStatusLabel(intern.status)}</span>
+      </div>
+      ${!hasEval ? '<div class="empty-state">导师尚未对你进行评价，继续努力哦~</div>' : ''}
+      ${hasEval ? `
+        <div class="chart-card">
+          <h3>能力雷达图</h3>
+          <div class="chart-container" style="height:300px"><canvas id="chart-my-radar"></canvas></div>
+        </div>
+        <div class="card" style="margin-top:20px">
+          <h3>四维度评分</h3>
+          <div class="eval-scores">
+            <div class="score-item">
+              <label>学习能力</label>
+              <div class="score-bar"><div class="score-fill" style="width:${scores.learning || 0}%"></div></div>
+              <span>${scores.learning || 0}分</span>
+            </div>
+            <div class="score-item">
+              <label>业务理解</label>
+              <div class="score-bar"><div class="score-fill" style="width:${scores.business || 0}%"></div></div>
+              <span>${scores.business || 0}分</span>
+            </div>
+            <div class="score-item">
+              <label>团队协作</label>
+              <div class="score-bar"><div class="score-fill" style="width:${scores.teamwork || 0}%"></div></div>
+              <span>${scores.teamwork || 0}分</span>
+            </div>
+            <div class="score-item">
+              <label>产出质量</label>
+              <div class="score-bar"><div class="score-fill" style="width:${scores.output || 0}%"></div></div>
+              <span>${scores.output || 0}分</span>
+            </div>
+          </div>
+        </div>
+        ${scores.comment ? `
+          <div class="card" style="margin-top:20px">
+            <h3>导师评语</h3>
+            <div class="eval-comment-box">${escapeHtml(scores.comment)}</div>
+          </div>
+        ` : ''}
+      ` : ''}
+    `;
+
+    if (hasEval) {
+      requestAnimationFrame(() => {
+        const ctx = document.getElementById('chart-my-radar');
+        if (ctx) Charts.capabilityRadar(ctx, scores);
+      });
+    }
+  },
+
   renderResources(container) {
     const intern = this.getIntern(this.currentUserId);
     const resources = RESOURCES[intern.position] || [];
@@ -670,7 +760,7 @@ const App = {
     container.innerHTML = `
       <div class="page-header">
         <h2>${mentor.department}岗位带教计划</h2>
-        <button class="btn-primary" onclick="alert('已应用到所有实习生')">一键应用</button>
+        <button class="btn-primary" onclick="App.applyTeachPlan()">一键应用</button>
       </div>
       <div class="plan-list">
         ${template.map((week, idx) => `
@@ -686,6 +776,46 @@ const App = {
         `).join('')}
       </div>
     `;
+  },
+
+  async applyTeachPlan() {
+    await SubmitLock.run(async () => {
+      const mentor = this.getMentor(this.currentUserId);
+      const interns = this.getInterns().filter(i => i.mentorId === mentor.id);
+      const template = TEMPLATES[mentor.department];
+      if (!template) return;
+
+      if (!confirm(`将为 ${interns.length} 名实习生应用 ${mentor.department} 岗位带教计划，是否继续？`)) return;
+
+      let addedCount = 0;
+      for (const intern of interns) {
+        const existingWeeks = new Set(intern.tasks.filter(t => t.source === 'template').map(t => t.week));
+        let taskId = intern.tasks.length > 0 ? Math.max(...intern.tasks.map(t => t.id)) : 0;
+
+        for (const weekPlan of template) {
+          if (existingWeeks.has(weekPlan.week)) continue;
+          for (const taskTitle of weekPlan.tasks) {
+            taskId++;
+            const task = {
+              id: taskId,
+              internId: intern.id,
+              week: weekPlan.week,
+              title: taskTitle,
+              description: `${mentor.department}岗位第${weekPlan.week}周基础任务：${taskTitle}`,
+              completed: false,
+              deadline: getWeekDeadline(weekPlan.week),
+              source: 'template'
+            };
+            intern.tasks.push(task);
+            addedCount++;
+          }
+        }
+        await Storage.updateIntern(intern);
+      }
+      await this.loadData();
+      this.showToast(`带教计划应用成功！共新增 ${addedCount} 个任务`);
+      this.renderTeachPlan(document.getElementById('main-content'));
+    });
   },
 
   renderAssignTask(container) {
@@ -747,8 +877,8 @@ const App = {
                   <span class="assigned-task-week">第${task.week}周</span>
                   <button class="btn-delete" onclick="App.deleteAssignedTask(${task.internId}, ${task.id})">删除</button>
                 </div>
-                <div class="assigned-task-title">${task.title}</div>
-                <div class="assigned-task-desc">${task.description}</div>
+                <div class="assigned-task-title">${escapeHtml(task.title)}</div>
+                <div class="assigned-task-desc">${escapeHtml(task.description)}</div>
                 <div class="assigned-task-meta">
                   <span>截止：${task.deadline}</span>
                   <span class="task-status ${task.completed ? 'done' : 'pending'}">${task.completed ? '已完成' : '进行中'}</span>
@@ -782,55 +912,58 @@ const App = {
   },
 
   async createTask() {
-    try {
-      const internId = parseInt(document.getElementById('task-intern').value);
-      const week = parseInt(document.getElementById('task-week').value);
-      const title = document.getElementById('task-title').value.trim();
-      const desc = document.getElementById('task-desc').value.trim();
-      const deadline = document.getElementById('task-deadline').value;
+    await SubmitLock.run(async () => {
+      try {
+        const internId = parseInt(document.getElementById('task-intern').value);
+        const week = parseInt(document.getElementById('task-week').value);
+        const title = document.getElementById('task-title').value.trim();
+        const desc = document.getElementById('task-desc').value.trim();
+        const deadline = document.getElementById('task-deadline').value;
 
-      if (!title) { alert('请填写任务标题'); return; }
+        if (!title) { alert('请填写任务标题'); return; }
 
-      const intern = this.getIntern(internId);
-      const maxId = intern.tasks.length > 0 ? Math.max(...intern.tasks.map(t => t.id)) : 0;
+        const intern = this.getIntern(internId);
+        const maxId = intern.tasks.length > 0 ? Math.max(...intern.tasks.map(t => t.id)) : 0;
 
-      const task = {
-        id: maxId + 1,
-        internId,
-        week,
-        title,
-        description: desc || title,
-        completed: false,
-        deadline: deadline || getWeekDeadline(week),
-        source: 'mentor',
-        assignedBy: this.currentUserId,
-        assignedAt: new Date().toISOString().split('T')[0]
-      };
+        const task = {
+          id: maxId + 1,
+          internId,
+          week,
+          title,
+          description: desc || title,
+          completed: false,
+          deadline: deadline || getWeekDeadline(week),
+          source: 'mentor',
+          assignedBy: this.currentUserId,
+          assignedAt: new Date().toISOString().split('T')[0]
+        };
 
-      await Storage.addTask(internId, task);
-      await this.loadData();
-      this.showToast('任务分配成功！');
-      document.getElementById('task-title').value = '';
-      document.getElementById('task-desc').value = '';
-      // 刷新任务分配页面，显示新任务
-      this.renderAssignTask(document.getElementById('main-content'));
-    } catch (err) {
-      console.error('[createTask] ERROR:', err);
-      alert('任务分配失败: ' + (err.message || '未知错误'));
-    }
+        await Storage.addTask(internId, task);
+        await this.loadData();
+        this.showToast('任务分配成功！');
+        document.getElementById('task-title').value = '';
+        document.getElementById('task-desc').value = '';
+        this.renderAssignTask(document.getElementById('main-content'));
+      } catch (err) {
+        console.error('[createTask] ERROR:', err);
+        alert('任务分配失败: ' + (err.message || '未知错误'));
+      }
+    });
   },
 
   async deleteAssignedTask(internId, taskId) {
     if (!confirm('确定要删除这个任务吗？')) return;
-    try {
-      await Storage.deleteTask(internId, taskId);
-      await this.loadData();
-      this.showToast('任务已删除');
-      this.renderAssignTask(document.getElementById('main-content'));
-    } catch (err) {
-      console.error('[deleteAssignedTask] ERROR:', err);
-      alert('删除失败: ' + (err.message || '未知错误'));
-    }
+    await SubmitLock.run(async () => {
+      try {
+        await Storage.deleteTask(internId, taskId);
+        await this.loadData();
+        this.showToast('任务已删除');
+        this.renderAssignTask(document.getElementById('main-content'));
+      } catch (err) {
+        console.error('[deleteAssignedTask] ERROR:', err);
+        alert('删除失败: ' + (err.message || '未知错误'));
+      }
+    });
   },
 
   renderViewLogs(container) {
@@ -854,20 +987,20 @@ const App = {
                 <span class="log-week">第${log.week}周</span>
                 <span class="log-date">${log.submittedAt}</span>
               </div>
-              <p><strong>总结：</strong>${log.summary}</p>
-              <p><strong>困难：</strong>${log.difficulties}</p>
+              <p><strong>总结：</strong>${escapeHtml(log.summary)}</p>
+              <p><strong>困难：</strong>${escapeHtml(log.difficulties)}</p>
               ${log.aiFeedback ? `
                 <div class="ai-feedback-box small">
-                  <strong>AI反馈：</strong>${log.aiFeedback}
+                  <strong>AI反馈：</strong>${escapeHtml(log.aiFeedback)}
                 </div>
               ` : ''}
               ${(log.comments || []).length > 0 ? `
                 <div class="log-comments">
                   ${log.comments.map(c => `
                     <div class="log-comment">
-                      <span class="comment-author">${c.author}</span>
-                      <span class="comment-time">${c.time}</span>
-                      <p>${c.content}</p>
+                      <span class="comment-author">${escapeHtml(c.author)}</span>
+                      <span class="comment-time">${escapeHtml(c.time)}</span>
+                      <p>${escapeHtml(c.content)}</p>
                     </div>
                   `).join('')}
                 </div>
@@ -884,19 +1017,21 @@ const App = {
   },
 
   async addLogComment(internId, week) {
-    const input = document.getElementById(`comment-${internId}-${week}`);
-    const content = input.value.trim();
-    if (!content) return;
-    const mentor = this.getMentor(this.currentUserId);
-    await Storage.addLogComment(internId, week, {
-      author: mentor ? mentor.name : '导师',
-      role: 'mentor',
-      content: content,
-      time: new Date().toLocaleString('zh-CN')
+    await SubmitLock.run(async () => {
+      const input = document.getElementById(`comment-${internId}-${week}`);
+      const content = input.value.trim();
+      if (!content) return;
+      const mentor = this.getMentor(this.currentUserId);
+      await Storage.addLogComment(internId, week, {
+        author: mentor ? mentor.name : '导师',
+        role: 'mentor',
+        content: content,
+        time: new Date().toLocaleString('zh-CN')
+      });
+      await this.loadData();
+      input.value = '';
+      this.renderViewLogs(document.getElementById('main-content'));
     });
-    await this.loadData();
-    input.value = '';
-    this.renderViewLogs(document.getElementById('main-content'));
   },
 
   renderEvaluate(container) {
@@ -962,32 +1097,32 @@ const App = {
   },
 
   async submitEval() {
-    const internId = parseInt(document.getElementById('eval-intern').value);
-    const intern = this.getIntern(internId);
-    if (intern) {
-      const newScores = {
-        learning: parseInt(document.getElementById('score-learning').value),
-        business: parseInt(document.getElementById('score-business').value),
-        teamwork: parseInt(document.getElementById('score-teamwork').value),
-        output: parseInt(document.getElementById('score-output').value),
-        comment: document.getElementById('eval-comment').value.trim()
-      };
-      intern.scores = newScores;
-      // 根据平均分更新状态
-      const avg = (newScores.learning + newScores.business + newScores.teamwork + newScores.output) / 4;
-      intern.status = avg >= 80 ? 'adapted' : avg >= 60 ? 'attention' : 'risk';
-      // 更新 scoreHistory 最新一周
-      if (intern.scoreHistory && intern.scoreHistory.length > 0) {
-        const latest = intern.scoreHistory[intern.scoreHistory.length - 1];
-        latest.learning = newScores.learning;
-        latest.business = newScores.business;
-        latest.teamwork = newScores.teamwork;
-        latest.output = newScores.output;
+    await SubmitLock.run(async () => {
+      const internId = parseInt(document.getElementById('eval-intern').value);
+      const intern = this.getIntern(internId);
+      if (intern) {
+        const newScores = {
+          learning: parseInt(document.getElementById('score-learning').value),
+          business: parseInt(document.getElementById('score-business').value),
+          teamwork: parseInt(document.getElementById('score-teamwork').value),
+          output: parseInt(document.getElementById('score-output').value),
+          comment: document.getElementById('eval-comment').value.trim()
+        };
+        intern.scores = newScores;
+        const avg = (newScores.learning + newScores.business + newScores.teamwork + newScores.output) / 4;
+        intern.status = avg >= 80 ? 'adapted' : avg >= 60 ? 'attention' : 'risk';
+        if (intern.scoreHistory && intern.scoreHistory.length > 0) {
+          const latest = intern.scoreHistory[intern.scoreHistory.length - 1];
+          latest.learning = newScores.learning;
+          latest.business = newScores.business;
+          latest.teamwork = newScores.teamwork;
+          latest.output = newScores.output;
+        }
+        await Storage.updateIntern(intern);
+        await this.loadData();
+        alert('评价提交成功！');
       }
-      await Storage.updateIntern(intern);
-      await this.loadData();
-      alert('评价提交成功！');
-    }
+    });
   },
 
   // ===== HR视图 =====
@@ -1066,7 +1201,7 @@ const App = {
     `;
 
     // 延迟初始化图表，确保DOM已渲染
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       const posCtx = document.getElementById('chart-position');
       const mentorCtx = document.getElementById('chart-mentor');
       const statusCtx = document.getElementById('chart-status');
@@ -1284,10 +1419,10 @@ const App = {
       ` : ''}
     `;
 
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       const ctx = document.getElementById('chart-log-activity');
       if (ctx) Charts.logActivityBar(ctx);
-    }, 100);
+    });
   },
 
   // ===== 工具方法 =====

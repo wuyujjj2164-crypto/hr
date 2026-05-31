@@ -68,12 +68,20 @@ const TEMPLATES = {
   ]
 };
 
+function getCurrentWeekReal() {
+  const base = new Date('2025-05-01');
+  const now = new Date();
+  const diffMs = now - base;
+  const diffWeeks = Math.ceil(diffMs / (7 * 24 * 60 * 60 * 1000));
+  return Math.max(1, Math.min(12, diffWeeks));
+}
+
 function generateInterns() {
   const interns = [];
+  const currentWeek = getCurrentWeekReal();
   for (let i = 0; i < 20; i++) {
     const position = POSITIONS[i % 3];
     const mentor = MENTORS.find(m => m.department === position);
-    const currentWeek = Math.floor(Math.random() * 5) + 1;
     const statusRoll = Math.random();
     const status = statusRoll > 0.7 ? STATUS.ADAPTED : statusRoll > 0.3 ? STATUS.ATTENTION : STATUS.RISK;
 
