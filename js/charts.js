@@ -147,9 +147,26 @@ const Charts = {
   // 评分趋势折线图
   scoreTrendLine(ctx, internId) {
     const intern = (window._appData?.interns || []).find(i => i.id === internId);
-    if (!intern || !intern.scoreHistory || intern.scoreHistory.length === 0) return;
+    if (!intern) return;
 
-    const labels = intern.scoreHistory.map(h => `第${h.week}周`);
+    // 兼容旧数据：若缺少 scoreHistory，用当前 scores 自动生成基础趋势
+    let scoreHistory = intern.scoreHistory;
+    if (!scoreHistory || scoreHistory.length === 0) {
+      scoreHistory = [];
+      const currentWeek = intern.currentWeek || 1;
+      const baseScores = intern.scores || { learning: 70, business: 70, teamwork: 70, output: 70 };
+      for (let w = 1; w <= currentWeek; w++) {
+        scoreHistory.push({
+          week: w,
+          learning: baseScores.learning,
+          business: baseScores.business,
+          teamwork: baseScores.teamwork,
+          output: baseScores.output
+        });
+      }
+    }
+
+    const labels = scoreHistory.map(h => `第${h.week}周`);
 
     if (this.instances.trend) {
       this.instances.trend.destroy();
@@ -160,10 +177,10 @@ const Charts = {
       data: {
         labels,
         datasets: [
-          { label: '学习能力', data: intern.scoreHistory.map(h => h.learning), borderColor: '#0052D9', backgroundColor: 'rgba(0, 82, 217, 0.1)', tension: 0.3, fill: true },
-          { label: '业务理解', data: intern.scoreHistory.map(h => h.business), borderColor: '#00C853', backgroundColor: 'rgba(0, 200, 83, 0.1)', tension: 0.3, fill: true },
-          { label: '团队协作', data: intern.scoreHistory.map(h => h.teamwork), borderColor: '#FF9100', backgroundColor: 'rgba(255, 145, 0, 0.1)', tension: 0.3, fill: true },
-          { label: '产出质量', data: intern.scoreHistory.map(h => h.output), borderColor: '#F5222D', backgroundColor: 'rgba(245, 34, 45, 0.1)', tension: 0.3, fill: true }
+          { label: '学习能力', data: scoreHistory.map(h => h.learning), borderColor: '#0052D9', backgroundColor: 'rgba(0, 82, 217, 0.1)', tension: 0.3, fill: true },
+          { label: '业务理解', data: scoreHistory.map(h => h.business), borderColor: '#00C853', backgroundColor: 'rgba(0, 200, 83, 0.1)', tension: 0.3, fill: true },
+          { label: '团队协作', data: scoreHistory.map(h => h.teamwork), borderColor: '#FF9100', backgroundColor: 'rgba(255, 145, 0, 0.1)', tension: 0.3, fill: true },
+          { label: '产出质量', data: scoreHistory.map(h => h.output), borderColor: '#F5222D', backgroundColor: 'rgba(245, 34, 45, 0.1)', tension: 0.3, fill: true }
         ]
       },
       options: {
