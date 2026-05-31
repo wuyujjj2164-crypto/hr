@@ -5,7 +5,7 @@ const Charts = {
 
   // 岗位分布饼图
   positionPie(ctx) {
-    const interns = Storage.getInterns();
+    const interns = window._appData?.interns || [];
     const counts = {};
     interns.forEach(i => { counts[i.position] = (counts[i.position] || 0) + 1; });
 
@@ -29,8 +29,8 @@ const Charts = {
 
   // 导师负载柱状图
   mentorLoadBar(ctx) {
-    const mentors = Storage.getMentors();
-    const interns = Storage.getInterns();
+    const mentors = window._appData?.mentors || [];
+    const interns = window._appData?.interns || [];
     const labels = mentors.map(m => m.name);
     const data = mentors.map(m => interns.filter(i => i.mentorId === m.id).length);
 
@@ -87,8 +87,8 @@ const Charts = {
 
   // 日志活跃度柱状图
   logActivityBar(ctx) {
-    const interns = Storage.getInterns();
-    const mentors = Storage.getMentors();
+    const interns = window._appData?.interns || [];
+    const mentors = window._appData?.mentors || [];
 
     // 统计每个导师名下实习生的日志提交率
     const labels = mentors.map(m => m.name);
@@ -121,7 +121,7 @@ const Charts = {
 
   // 状态分布柱状图
   statusBar(ctx) {
-    const interns = Storage.getInterns();
+    const interns = window._appData?.interns || [];
     const counts = { adapted: 0, attention: 0, risk: 0 };
     interns.forEach(i => { counts[i.status]++; });
 
@@ -146,7 +146,7 @@ const Charts = {
 
   // 评分趋势折线图
   scoreTrendLine(ctx, internId) {
-    const intern = Storage.getIntern(internId);
+    const intern = (window._appData?.interns || []).find(i => i.id === internId);
     if (!intern || !intern.scoreHistory || intern.scoreHistory.length === 0) return;
 
     const labels = intern.scoreHistory.map(h => `第${h.week}周`);
