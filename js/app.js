@@ -54,6 +54,7 @@ const App = {
   },
 
   showPasswordModal(role, userId) {
+    if (document.getElementById('password-modal')) return;
     if (sessionStorage.getItem('tcamp_auth_' + role) === 'true') {
       this.doSelectRole(role, userId);
       return;
@@ -90,7 +91,14 @@ const App = {
 
   // 实习生身份选择弹窗
   showInternSelectModal() {
+    if (document.getElementById('intern-select-modal')) return;
+
     const interns = window._appData?.interns || [];
+    if (interns.length === 0) {
+      alert('数据加载中，请稍后再试');
+      return;
+    }
+
     const overlay = document.createElement('div');
     overlay.id = 'intern-select-modal';
     overlay.className = 'password-modal';
