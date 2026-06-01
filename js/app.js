@@ -153,7 +153,10 @@ const App = {
     AIAssistant.currentRole = this.currentRole;
     AIAssistant.currentUserId = this.currentUserId;
 
-    // 点击页面其他地方关闭通知面板
+    // 点击页面其他地方关闭通知面板（先移除旧的再添加，防止重复绑定）
+    if (this._notifyOutsideHandler) {
+      document.removeEventListener('click', this._notifyOutsideHandler);
+    }
     this._notifyOutsideHandler = (e) => {
       const panel = document.getElementById('notify-panel');
       const bell = document.querySelector('.header-notify');
@@ -332,6 +335,10 @@ const App = {
   },
 
   async logout() {
+    if (this._notifyOutsideHandler) {
+      document.removeEventListener('click', this._notifyOutsideHandler);
+      this._notifyOutsideHandler = null;
+    }
     this.currentRole = null;
     this.currentUserId = null;
     await Storage.setRole(null, null);
